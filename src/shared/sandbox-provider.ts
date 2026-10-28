@@ -11,7 +11,7 @@ export const SANDBOX_EXEC_ERROR_CODES = {
 } as const
 
 export type SandboxExecErrorCode = (typeof SANDBOX_EXEC_ERROR_CODES)[keyof typeof SANDBOX_EXEC_ERROR_CODES]
-export type SandboxExecLanguage = 'node' | 'powershell' | 'bash'
+export type SandboxExecLanguage = 'node' | 'powershell' | 'bash' | 'python'
 
 export interface SandboxExecResult {
   stdout: string

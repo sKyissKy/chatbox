@@ -215,10 +215,10 @@ export function buildCodeExecutionTools(context: CodeExecutionContext): {
         },
         language: {
           type: 'string',
-          enum: ['node', 'powershell', 'bash'],
+          enum: ['node', 'powershell', 'bash', 'python'],
           default: 'node',
           description:
-            'Execution language. Prefer Node.js for cross-platform processing, PowerShell for native Windows commands, and Bash for POSIX-specific scripts.',
+            'Execution language. Prefer python for data science, mathematics, machine learning, and office processing (scipy, scikit-learn, seaborn, sympy, networkx, statsmodels, pandas, openpyxl, etc.), node for JavaScript processing, powershell for native Windows commands, and bash for POSIX scripts.',
         },
         timeout: {
           type: 'number',
@@ -476,16 +476,19 @@ You have access to a sandboxed environment for lightweight code execution and fi
 Uploaded files are described in <ATTACHMENT_FILE> tags. In sandbox mode, those tags include <SANDBOX_PATH> for the original file and, when available, <PARSED_SANDBOX_PATH> for extracted document text.
 
 ### Available Runtime
-- Bash
-- Node.js
+- Python (Preinstalled Python 3.8.10 with scipy, scikit-learn, seaborn, sympy, networkx, statsmodels, pandas, numpy, openpyxl, matplotlib, python-docx, etc.)
+- Node.js (Preinstalled Node.js 16 LTS with built-in modules)
 - PowerShell (Windows only; PowerShell 7 preferred, Windows PowerShell fallback)
+- Bash
+- Chromium 90 & FFmpeg 6.0 (Preinstalled on PATH for automation and media processing)
 
 Use the preinstalled runtime first:
-- CSV/TSV/JSON/table calculations: use Node.js built-ins such as fs, path, stream, readline, URL, TextDecoder, Intl, crypto, zlib, and child_process when needed.
-- XLSX, DOCX, PPTX, PDF, and image files: prefer <PARSED_SANDBOX_PATH> for extracted text. If direct binary manipulation requires unavailable libraries, explain the limitation or produce a text/CSV/HTML alternative.
-- Charts and visual outputs: generate standalone HTML with inline SVG or Canvas. Keep JavaScript, CSS, and small data inline in the HTML instead of referencing sibling .js/.css/data files. Save the HTML file, then call create_download when the user needs the result. Do not rely on Python plotting libraries.
-- File outputs: prefer CSV, JSON, Markdown, HTML, or other text-based formats that can be generated with Node.js, PowerShell, or Bash.
-- Python is not available in this code_execution tool; choose Node.js, PowerShell on Windows, or Bash.
+- Excel / Table / Data processing: use Python with pandas/openpyxl, or Node.js built-ins.
+- CSV/TSV/JSON calculations: use Python or Node.js built-ins such as fs, path, stream, readline, URL, TextDecoder, Intl, crypto, zlib.
+- XLSX, DOCX, PPTX, PDF, and image files: use Python (openpyxl, python-docx) or <PARSED_SANDBOX_PATH> for extracted text.
+- Charts and visual outputs: generate standalone HTML with inline SVG or Canvas, or use Python matplotlib. Save the file, then call create_download when the user needs the result.
+- File outputs: prefer CSV, JSON, Markdown, HTML, XLSX, or other formats generated with Python, Node.js, PowerShell, or Bash.
+- Python is fully supported and preinstalled with key data science & office packages.
 
 ### Package Installation
 Avoid installing packages. Most simple file-processing tasks should be completed with Node.js built-ins and shell tools.

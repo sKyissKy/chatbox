@@ -161,7 +161,7 @@ Sandbox working directory: ${workingDir ? formatPath(workingDir) : '(created whe
 - Commands start in the selected workdir; do not prepend cd or Set-Location.
 - Prefer write_file and edit_file for file changes. For reusable Node.js work, write a script file and run it with node through run_command.
 - Use read_file for sandbox files and explicitly provided absolute user paths. Use create_download to deliver generated files to the user.
-- Do not assume Python, extra packages, or package installation is available.
+- Offline Runtimes: Python 3.8.10 (with preinstalled scipy, scikit-learn, seaborn, sympy, networkx, statsmodels, numpy, pandas, matplotlib, openpyxl, python-docx, etc.), Node.js 16.20.2 LTS, Chromium 90 (headless automation browser), and FFmpeg 6.0 are pre-installed in the application environment and directly available on PATH. You can directly run python, node, ffmpeg, or chromium commands without asking the user for paths or installing packages.
 `
 }
 
