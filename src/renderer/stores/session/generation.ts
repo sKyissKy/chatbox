@@ -9,7 +9,11 @@ import { countMessageWords } from '@shared/utils/message'
 import { v4 as uuidv4 } from 'uuid'
 import { currentGenerationService } from '@/adapters/CurrentGenerationService'
 import { rendererApplication } from '@/app/renderer-application'
-import { assessContextPressure, getConfiguredContextWindow } from '@/packages/context-management/context-pressure'
+import {
+  assessContextPressure,
+  getConfiguredContextWindow,
+  getConfiguredMaxOutput,
+} from '@/packages/context-management/context-pressure'
 import { estimateTokensFromMessages } from '@/packages/token'
 import { settingsStore } from '@/stores/settingsStore'
 import { guardSessionAction } from './action-guard'
@@ -290,6 +294,7 @@ export async function genMessageContext(
     providerId: settings.provider,
     modelId: settings.modelId,
     contextWindow: getConfiguredContextWindow(globalSettings, settings.provider, settings.modelId),
+    maxOutput: getConfiguredMaxOutput(globalSettings, settings.provider, settings.modelId),
     compactionThreshold: globalSettings.compactionThreshold,
   })
 

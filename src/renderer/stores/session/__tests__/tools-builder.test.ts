@@ -1476,4 +1476,52 @@ describe('buildToolsForSession — view_image gating', () => {
     })
     expect(result.tools.view_image).toBeUndefined()
   })
+
+  test('formats compact skill instructions for small context windows (<= 64k)', async () => {
+    discoverSkillsMock.mockResolvedValue([
+      { name: 'analysis', description: 'Analyze statistical data and output charts for reporting.' },
+    ])
+    getSettingsMock.mockReturnValue({
+      skills: { enabledSkillNames: ['analysis'] },
+      memoryEnabled: false,
+    })
+
+    const model = createMockModel({ apiStyle: 'anthropic' } as Partial<ModelInterface>)
+    const result = await buildToolsForSession(model, {
+      webBrowsing: false,
+      messages: [],
+      agentMode: 'on',
+      contextWindow: 32_000,
+    })
+
+    expect(result.instructions).toContain('Available Skills (call load_skill to load full instructions before use)')
+    expect(result.instructions).toContain('- **analysis**: Analyze statistical data and output charts for reporting')
+  })
+
+  test('clamps oversized load_skill output to save context window', async () => {
+    loadSkillMock.mockResolvedValue({
+      name: 'giant-skill',
+      body: 'G'.repeat(25_000),
+      skillRoot: '/path/to/skill',
+      files: ['SKILL.md'],
+    })
+    getSettingsMock.mockReturnValue({
+      skills: { enabledSkillNames: ['giant-skill'] },
+      memoryEnabled: false,
+    })
+
+    const model = createMockModel({ apiStyle: 'anthropic' } as Partial<ModelInterface>)
+    const result = await buildToolsForSession(model, {
+      webBrowsing: false,
+      messages: [],
+      agentMode: 'on',
+    })
+
+    const loadSkillTool = result.tools.load_skill
+    expect(loadSkillTool).toBeDefined()
+    const execResult = await (loadSkillTool as any).execute({ name: 'giant-skill' })
+    const formatted = await toModelOutput(loadSkillTool, execResult)
+    expect((formatted as any).value).toContain('Truncated')
+    expect((formatted as any).value).toContain('/path/to/skill')
+  })
 })

@@ -4,7 +4,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { getCompactionContext } from './compaction-context'
 import { assessContextPressure } from './context-pressure'
 
-vi.mock('../model-registry', () => ({ getModelContextWindowSync: () => 128_000 }))
+vi.mock('../model-registry', () => ({
+  getModelContextWindowSync: () => 128_000,
+  getProviderModelContextWindowSync: () => 128_000,
+  getProviderModelMaxOutputSync: () => 4_096,
+}))
 
 const settings = {
   defaultChatModel: { provider: 'openai', model: 'chat-model' },

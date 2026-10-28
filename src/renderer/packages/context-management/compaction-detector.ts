@@ -22,6 +22,11 @@ export interface OverflowCheckOptions {
    * Use this when provider returns a specific contextWindow for the model.
    */
   contextWindow?: number
+  /**
+   * Explicit per-model max output tokens, if known. Used to dynamically adjust
+   * the output reserve instead of using a rigid 32k ceiling for smaller models.
+   */
+  maxOutput?: number
 }
 
 export interface OverflowCheckResult {
@@ -32,12 +37,27 @@ export interface OverflowCheckResult {
 }
 
 /**
+ * Dynamically calculates the output reserve.
+ * When maxOutput is provided, uses it bounded between 2,048 and OUTPUT_RESERVE_TOKENS,
+ * not exceeding 25% of the total context window. When maxOutput is omitted,
+ * maintains backward-compatible OUTPUT_RESERVE_TOKENS (32,000).
+ */
+export function calculateDynamicOutputReserve(contextWindow: number, maxOutput?: number): number {
+  if (contextWindow <= 0) return 4_096
+  if (maxOutput !== undefined && maxOutput > 0) {
+    const clamped = Math.min(OUTPUT_RESERVE_TOKENS, Math.max(2_048, maxOutput))
+    return Math.min(clamped, Math.floor(contextWindow * 0.25))
+  }
+  return OUTPUT_RESERVE_TOKENS
+}
+
+/**
  * Checks if context tokens exceed compaction threshold.
  * Formula: isOverflow = tokens > (contextWindow - OUTPUT_RESERVE) * threshold
  * Returns false for unknown models (cannot determine threshold).
  */
 export function checkOverflow(options: OverflowCheckOptions): OverflowCheckResult {
-  const { tokens, modelId, settings, contextWindow: providedContextWindow } = options
+  const { tokens, modelId, settings, contextWindow: providedContextWindow, maxOutput } = options
 
   if (tokens <= 0) {
     return { isOverflow: false, contextWindow: null, thresholdTokens: null, currentTokens: tokens }
@@ -47,7 +67,8 @@ export function checkOverflow(options: OverflowCheckOptions): OverflowCheckResul
   // model registry, then to a conservative assumed window for unknown models.
   const contextWindow = providedContextWindow ?? getModelContextWindowSync(modelId) ?? FALLBACK_CONTEXT_WINDOW_TOKENS
 
-  const availableWindow = Math.max(contextWindow - OUTPUT_RESERVE_TOKENS, Math.floor(contextWindow * 0.5))
+  const outputReserve = calculateDynamicOutputReserve(contextWindow, maxOutput)
+  const availableWindow = Math.max(contextWindow - outputReserve, Math.floor(contextWindow * 0.5))
   if (availableWindow <= 0) {
     return { isOverflow: false, contextWindow, thresholdTokens: null, currentTokens: tokens }
   }
@@ -70,11 +91,13 @@ export function isOverflow(options: OverflowCheckOptions): boolean {
 export function getCompactionThresholdTokens(
   modelId: string,
   settings?: Partial<Pick<Settings, 'compactionThreshold'>>,
-  providedContextWindow?: number
+  providedContextWindow?: number,
+  providedMaxOutput?: number
 ): number | null {
   const contextWindow = providedContextWindow ?? getModelContextWindowSync(modelId) ?? FALLBACK_CONTEXT_WINDOW_TOKENS
 
-  const availableWindow = Math.max(contextWindow - OUTPUT_RESERVE_TOKENS, Math.floor(contextWindow * 0.5))
+  const outputReserve = calculateDynamicOutputReserve(contextWindow, providedMaxOutput)
+  const availableWindow = Math.max(contextWindow - outputReserve, Math.floor(contextWindow * 0.5))
   if (availableWindow <= 0) return null
 
   const compactionThreshold = settings?.compactionThreshold ?? DEFAULT_COMPACTION_THRESHOLD

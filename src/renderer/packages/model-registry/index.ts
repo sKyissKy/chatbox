@@ -70,6 +70,14 @@ function getProviderContextWindow(modelId: string, providerId: string, registry:
   return meta && meta.contextWindow > 0 ? meta.contextWindow : null
 }
 
+function getProviderMaxOutput(modelId: string, providerId: string, registry: ModelRegistryData): number | null {
+  const providerRegistry = registry[providerId]
+  if (!providerRegistry) return null
+
+  const meta = findModelInRegistry(modelId, providerRegistry)
+  return meta && meta.maxOutput > 0 ? meta.maxOutput : null
+}
+
 /**
  * Get model context window synchronously.
  * Backward-compatible with the old model-context module.
@@ -82,6 +90,11 @@ export function getModelContextWindowSync(modelId: string): number | null {
 export function getProviderModelContextWindowSync(providerId: string, modelId: string): number | null {
   if (!providerId || !modelId) return null
   return getProviderContextWindow(modelId, providerId, getRegistrySync())
+}
+
+export function getProviderModelMaxOutputSync(providerId: string, modelId: string): number | null {
+  if (!providerId || !modelId) return null
+  return getProviderMaxOutput(modelId, providerId, getRegistrySync())
 }
 
 /**
