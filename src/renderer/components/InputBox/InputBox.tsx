@@ -1241,7 +1241,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const isAgentModeActive = agentModeUIState.isActive
 
     const insertFiles = async (files: File[], options: InsertFilesOptions = {}) => {
-      const MAX_IMAGES = 8
+      const MAX_IMAGES = 1000
       const MAX_ATTACHMENTS = 20
       // 用本地累加器跟踪本次新增数量：同步循环内 state/ref 可能尚未刷新，靠它做无竞态的限额判断
       let imageCount = preConstructedMessageRef.current.pictureKeys?.length || 0
@@ -1252,7 +1252,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       for (const file of files) {
         // 文件和图片插入方法复用，会导致 svg、gif 这类不支持的图片也被插入，但暂时没看到有什么问题
         if (file.type.startsWith('image/')) {
-          // 超过上限时直接跳过：保留最先添加的前 8 张，且不浪费转码/不产生孤儿 blob
+          // 超过上限时直接跳过，且不浪费转码/不产生孤儿 blob
           if (imageCount >= MAX_IMAGES) {
             droppedImages++
             continue
@@ -1262,7 +1262,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
           await saveBlob.mutateAsync({ key, value: base64 })
           setPreConstructedMessage((prev) => ({
             ...prev,
-            pictureKeys: [...(prev.pictureKeys || []), key].slice(0, MAX_IMAGES), // 保留最先添加的前 8 张
+            pictureKeys: [...(prev.pictureKeys || []), key].slice(0, MAX_IMAGES),
           }))
           imageCount++
         } else {
@@ -1294,6 +1294,27 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
             }
             toastActions.add(errorMsg)
             continue
+          }
+
+          if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+            try {
+              const pdfPageImages = await picUtils.renderPdfPagesToPngBase64(file)
+              const pdfPageKeys: string[] = []
+              for (const [pageIndex, base64] of pdfPageImages.entries()) {
+                const key = StorageKeyGenerator.picture(`input-box-pdf:${file.name}:${pageIndex + 1}`)
+                await saveBlob.mutateAsync({ key, value: base64 })
+                pdfPageKeys.push(key)
+              }
+              if (pdfPageKeys.length > 0) {
+                setPreConstructedMessage((prev) => ({
+                  ...prev,
+                  pictureKeys: [...(prev.pictureKeys || []), ...pdfPageKeys],
+                }))
+              }
+            } catch (error) {
+              console.error('Failed to render PDF pages as images:', error)
+              toastActions.add(t('Failed to parse file. Please try again or use a different file format.'))
+            }
           }
 
           // 已存在的文件视为重复（不占新增名额），新文件超过上限时直接跳过：保留最先添加的前 20 个

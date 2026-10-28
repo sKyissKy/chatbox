@@ -98,4 +98,47 @@ describe('ReasoningControlButton', () => {
     // The level text lives in the menu items now that the trigger is icon-only.
     expect(screen.getByTestId(TestId.reasoning.level('high')).textContent).toContain('High')
   })
+
+  test('supports reasoning control for Qwen models on the OpenAI interface', async () => {
+    const onChange = vi.fn()
+    render(
+      <MantineProvider>
+        <ReasoningControlButton
+          provider={ModelProviderEnum.OpenAI}
+          model={{ modelId: 'qwen-plus' }}
+          iconSize={22}
+          onChange={onChange}
+        />
+      </MantineProvider>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
+    await waitFor(() => expect(screen.getByTestId(TestId.reasoning.menu)).toBeTruthy())
+    expect(screen.getByTestId(TestId.reasoning.level('off'))).toBeTruthy()
+    expect(screen.getByTestId(TestId.reasoning.level('high'))).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId(TestId.reasoning.level('high')))
+    expect(onChange).toHaveBeenCalledWith('high')
+  })
+
+  test('supports reasoning control for DeepSeek models on the OpenAI interface', async () => {
+    const onChange = vi.fn()
+    render(
+      <MantineProvider>
+        <ReasoningControlButton
+          provider={ModelProviderEnum.OpenAI}
+          model={{ modelId: 'deepseek-r1' }}
+          iconSize={22}
+          onChange={onChange}
+        />
+      </MantineProvider>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
+    await waitFor(() => expect(screen.getByTestId(TestId.reasoning.menu)).toBeTruthy())
+    expect(screen.getByTestId(TestId.reasoning.level('off'))).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId(TestId.reasoning.level('off')))
+    expect(onChange).toHaveBeenCalledWith('off')
+  })
 })
