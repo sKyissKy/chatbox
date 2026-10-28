@@ -1,18 +1,22 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { Client } from '@libsql/client'
-import { LibSQLVector } from '@mastra/libsql'
 import { app } from 'electron'
 import { sentry } from '../adapters/sentry'
 import { getLogger } from '../util'
+import { isWin7Build } from '../win7-compat'
+import { openWasmVectorStore, type WasmSqlJsClient, type WasmVectorStore } from '../win7-rag/sqlite-wasm'
+
+export type Client = WasmSqlJsClient
+export type LibSQLVector = WasmVectorStore
 
 const log = getLogger('knowledge-base:db')
+const isWin7RagEnabled = isWin7Build || process.env.CHATBOX_WIN7_RAG === 'true'
 
 // Do not use `${userData}/databases`: Chromium/Electron profile storage may
 // unlink files in that directory. Keep app-owned sqlite files in our own folder.
 const userDataPath = app.getPath('userData')
 const appDatabaseDir = path.join(userDataPath, 'chatbox-databases')
-const dbPath = path.join(appDatabaseDir, 'chatbox_kb.db')
+const dbPath = path.join(appDatabaseDir, isWin7RagEnabled ? 'chatbox_kb_wasm.db' : 'chatbox_kb.db')
 
 // Ensure database directory exists
 const dbDir = path.dirname(dbPath)
@@ -25,8 +29,8 @@ if (typeof global.crypto === 'undefined' || !('subtle' in global.crypto)) {
   global.crypto = require('node:crypto')
 }
 
-let db: Client
-let vectorStore: LibSQLVector
+let db: any
+let vectorStore: LibSQLVector | WasmVectorStore
 
 async function initDB(db: Client) {
   try {
@@ -116,16 +120,12 @@ async function initDB(db: Client) {
 
 export async function initializeDatabase() {
   try {
-    vectorStore = new LibSQLVector({
-      connectionUrl: `file:${dbPath}`,
-    })
-    // 这里不再创建新的 client，因为多个 client 同时操作一个 db 文件会导致数据损坏
-    // biome-ignore lint/suspicious/noExplicitAny: access internal property
-    db = (vectorStore as any).turso
+    const wasmStore = await openWasmVectorStore(dbPath)
+    vectorStore = wasmStore
+    db = wasmStore.turso
     await initDB(db)
-
-    // Clean up any processing files left from previous session
     await cleanupProcessingFiles()
+    log.info('[DB] Initialized Win7 RAG database with sql.js WASM')
   } catch (error) {
     log.error('[DB] Failed to initialize database system:', error)
     sentry.withScope((scope) => {
@@ -163,7 +163,7 @@ export function getVectorStore(): LibSQLVector {
     })
     throw error
   }
-  return vectorStore
+  return vectorStore as LibSQLVector
 }
 
 // Helper function to parse SQLite timestamp correctly

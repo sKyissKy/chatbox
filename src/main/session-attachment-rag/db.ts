@@ -1,22 +1,29 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { type Client, createClient } from '@libsql/client'
-import { LibSQLVector } from '@mastra/libsql'
 import { app } from 'electron'
 import { SESSION_ATTACHMENT_RAG_LOG_PREFIX } from '../../shared/session-attachment-rag/logging'
 import { planOrphanCleanup } from '../../shared/session-attachment-rag/ownership'
 import type { SessionAttachmentOwnershipClaim } from '../../shared/types'
 import { sentry } from '../adapters/sentry'
 import { getLogger } from '../util'
+import { isWin7Build } from '../win7-compat'
+import { openWasmVectorStore, WasmSqlJsClient, type WasmVectorStore } from '../win7-rag/sqlite-wasm'
+
+export type Client = WasmSqlJsClient
+export type LibSQLVector = WasmVectorStore
 
 const log = getLogger('session-attachment-rag:db')
+const isWin7RagEnabled = isWin7Build || process.env.CHATBOX_WIN7_RAG === 'true'
 
 // Do not use `${userData}/databases`: Chromium/Electron profile storage may
 // unlink files in that directory. Keep app-owned sqlite files in our own folder.
 const userDataPath = app.getPath('userData')
 const appDatabaseDir = path.join(userDataPath, 'chatbox-databases')
-const defaultDbPath = path.join(appDatabaseDir, 'chatbox_session_rag.db')
-const defaultVectorDbPath = path.join(appDatabaseDir, 'chatbox_session_rag_vectors.db')
+const defaultDbPath = path.join(appDatabaseDir, isWin7RagEnabled ? 'chatbox_session_rag_wasm.db' : 'chatbox_session_rag.db')
+const defaultVectorDbPath = path.join(
+  appDatabaseDir,
+  isWin7RagEnabled ? 'chatbox_session_rag_vectors_wasm.db' : 'chatbox_session_rag_vectors.db'
+)
 const dbPath = process.env.SESSION_ATTACHMENT_RAG_DB_PATH || defaultDbPath
 const vectorDbPath = process.env.SESSION_ATTACHMENT_RAG_VECTOR_DB_PATH || defaultVectorDbPath
 
@@ -34,8 +41,8 @@ if (typeof global.crypto === 'undefined' || !('subtle' in global.crypto)) {
   global.crypto = require('node:crypto')
 }
 
-let db: Client
-let vectorStore: LibSQLVector
+let db: Client | WasmSqlJsClient
+let vectorStore: LibSQLVector | WasmVectorStore
 let vectorWriteQueue: Promise<void> = Promise.resolve()
 
 export type SessionAttachmentStatus = 'pending' | 'indexing' | 'ready' | 'failed' | 'canceled'
@@ -192,7 +199,7 @@ async function runSchemaMigrations(client: Client) {
   await setSchemaVersion(client, SCHEMA_VERSION)
 }
 
-async function initDB(client: Client) {
+async function initDB(client: any) {
   try {
     await client.batch([
       `CREATE TABLE IF NOT EXISTS session_attachment (
@@ -274,31 +281,19 @@ function getFileSizeBytes(filePath: string): number {
   }
 }
 
-async function createVectorStoreWithHealthCheck(): Promise<LibSQLVector> {
-  const store = new LibSQLVector({
-    connectionUrl: `file:${vectorDbPath}`,
-  })
-  await store.listIndexes()
-  return store
-}
-
-async function initializeVectorStore(): Promise<LibSQLVector> {
-  return await createVectorStoreWithHealthCheck()
-}
-
 export async function initializeDatabase() {
   try {
     ensureDbDir(dbPath)
     ensureDbDir(vectorDbPath)
-    // Keep metadata operations on a dedicated client. The vector store owns
-    // its separate database file and client.
-    db = createClient({ url: `file:${dbPath}` })
+    const wasmStore = await openWasmVectorStore(vectorDbPath)
+    vectorStore = wasmStore
+    db = await WasmSqlJsClient.open(dbPath)
     await db.execute('PRAGMA journal_mode=WAL')
     await db.execute('PRAGMA busy_timeout = 5000')
     await db.execute('PRAGMA foreign_keys = ON')
     await initDB(db)
     await cleanupInterruptedIndexingAttachments()
-    vectorStore = await initializeVectorStore()
+    log.info('[DB] Initialized Win7 RAG database with sql.js WASM')
     await cleanupReadyAttachmentsMissingVectorIndexes()
   } catch (error) {
     log.error(
@@ -326,7 +321,7 @@ export function getDatabase(): Client {
     })
     throw error
   }
-  return db
+  return db as Client
 }
 
 export function getVectorStore(): LibSQLVector {
@@ -339,7 +334,7 @@ export function getVectorStore(): LibSQLVector {
     })
     throw error
   }
-  return vectorStore
+  return vectorStore as LibSQLVector
 }
 
 export async function runVectorWrite<T>(operation: () => Promise<T>): Promise<T> {
