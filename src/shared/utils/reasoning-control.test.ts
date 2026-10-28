@@ -526,6 +526,118 @@ describe('reasoning-control', () => {
     })
   })
 
+  it('supports Qwen effort through custom OpenAI-compatible providers (Strata) and Ollama', () => {
+    const qwenStrata = model('qwen3.8-flash-next', 'openai')
+    const qwenOllama = model('qwen3:32b')
+
+    // Strata (custom OpenAI provider)
+    expect(getReasoningControlCapabilities('custom-strata', qwenStrata)).toEqual({
+      supported: true,
+      kind: 'openai-effort',
+    })
+    expect(getReasoningProviderOptions('custom-strata', qwenStrata, 'high')).toEqual({
+      openaiCompatible: { reasoningEffort: 'high', enable_thinking: true, thinking_budget: 8192 },
+      openai: { reasoningEffort: 'high' },
+    })
+    expect(getReasoningProviderOptions('custom-strata', qwenStrata, 'off')).toEqual({
+      openaiCompatible: { reasoningEffort: 'none', enable_thinking: false },
+      openai: { reasoningEffort: 'none' },
+    })
+    expect(
+      getReasoningControlLevel('custom-strata', qwenStrata, {
+        openaiCompatible: { reasoningEffort: 'high' },
+      })
+    ).toBe('high')
+    expect(
+      getReasoningControlLevel('custom-strata', qwenStrata, {
+        openaiCompatible: { reasoningEffort: 'none' },
+      })
+    ).toBe('off')
+
+    // Ollama built-in provider
+    expect(getReasoningControlCapabilities(ModelProviderEnum.Ollama, qwenOllama)).toEqual({
+      supported: true,
+      kind: 'openai-effort',
+    })
+    expect(getReasoningProviderOptions(ModelProviderEnum.Ollama, qwenOllama, 'medium')).toEqual({
+      openaiCompatible: { reasoningEffort: 'medium', enable_thinking: true, thinking_budget: 4096 },
+      openai: { reasoningEffort: 'medium' },
+    })
+    expect(getReasoningProviderOptions(ModelProviderEnum.Ollama, qwenOllama, 'off')).toEqual({
+      openaiCompatible: { reasoningEffort: 'none', enable_thinking: false },
+      openai: { reasoningEffort: 'none' },
+    })
+  })
+
+  it('supports Qwen and diverse reasoning models through the OpenAI provider interface', () => {
+    const qwenModels = [
+      model('qwen3.8-flash-next'),
+      model('qwen-plus'),
+      model('qwq-32b'),
+      model('qwen2.5-coder-32b'),
+    ]
+
+    for (const qwenModel of qwenModels) {
+      expect(getReasoningControlCapabilities(ModelProviderEnum.OpenAI, qwenModel)).toEqual({
+        supported: true,
+        kind: 'openai-effort',
+      })
+      expect(getReasoningControlOptions(ModelProviderEnum.OpenAI, qwenModel)).toEqual([
+        { level: 'default', label: 'default' },
+        { level: 'off', label: 'off' },
+        { level: 'low', label: 'low' },
+        { level: 'medium', label: 'medium' },
+        { level: 'high', label: 'high' },
+      ])
+      expect(getReasoningProviderOptions(ModelProviderEnum.OpenAI, qwenModel, 'high')).toEqual({
+        openaiCompatible: { reasoningEffort: 'high', enable_thinking: true, thinking_budget: 8192 },
+        openai: { reasoningEffort: 'high' },
+      })
+      expect(getReasoningProviderOptions(ModelProviderEnum.OpenAI, qwenModel, 'off')).toEqual({
+        openaiCompatible: { reasoningEffort: 'none', enable_thinking: false },
+        openai: { reasoningEffort: 'none' },
+      })
+      expect(
+        getReasoningControlLevel(ModelProviderEnum.OpenAI, qwenModel, {
+          openai: { reasoningEffort: 'high' },
+        })
+      ).toBe('high')
+      expect(
+        getReasoningControlLevel(ModelProviderEnum.OpenAI, qwenModel, {
+          openaiCompatible: { enable_thinking: false },
+        })
+      ).toBe('off')
+    }
+
+    // Other reasoning models across the ecosystem
+    expect(getReasoningControlCapabilities(ModelProviderEnum.OpenAI, model('deepseek-reasoner'))).toEqual({
+      supported: true,
+      kind: 'toggle',
+    })
+    expect(getReasoningControlCapabilities(ModelProviderEnum.OpenAI, model('deepseek-flash'))).toEqual({
+      supported: true,
+      kind: 'deepseek-effort',
+    })
+
+    const otherEffortModels = [
+      model('glm-zero-preview'),
+      model('kimi-k1.5'),
+      model('grok-4'),
+      { modelId: 'custom-finetuned-model', capabilities: ['reasoning' as const] },
+    ]
+
+    for (const reasoningModel of otherEffortModels) {
+      expect(getReasoningControlCapabilities(ModelProviderEnum.OpenAI, reasoningModel)).toEqual({
+        supported: true,
+        kind: 'openai-effort',
+      })
+    }
+
+    // Non-reasoning models remain unsupported on OpenAI
+    expect(getReasoningControlCapabilities(ModelProviderEnum.OpenAI, model('gpt-4o')).supported).toBe(false)
+    expect(getReasoningControlCapabilities(ModelProviderEnum.OpenAI, model('gpt-5.2-chat')).supported).toBe(false)
+  })
+
   it.each([
     {
       apiStyle: 'openai' as const,

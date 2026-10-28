@@ -161,13 +161,63 @@ const CLAUDE_BUDGET_MODELS = [
   /(?:^|\/)claude-haiku-4-5/i,
   /(?:^|\/)claude-opus-4(?![.-]?5)(?![.-]?7)(?![.-]?8)/i,
 ]
-const QWEN_THINKING_MODELS = [/^qwen3/i, /(?:^|\/)qwen3/i]
+const QWEN_THINKING_MODELS = [/^qwen3/i, /(?:^|\/)qwen3/i, /(?:^|\/)qwq/i]
 const GROK_REASONING_EFFORT_MODELS = [
   /(?:^|\/)grok-4\.3(?:-latest)?$/i,
   /(?:^|\/)grok-4(?:-latest|-0709)?$/i,
   /(?:^|\/)grok-4-fast(?:-reasoning)?(?:-latest)?$/i,
   /(?:^|\/)grok-4-1-fast(?:-reasoning)?(?:-latest)?$/i,
 ]
+
+export const REASONING_MODEL_PATTERNS = [
+  // OpenAI o-series & GPT reasoning
+  /(?:^|\/)o[1-9](?:[.-]|$)/i,
+  /(?:^|\/)gpt-oss(?:[.-]|$)/i,
+  /(?:^|\/)gpt-[5-9](?=[.-]|$)/i,
+  // Qwen & QwQ (covers qwen3, qwen2.5, qwen-plus, qwen-max, qwen-turbo, qwq-32b, etc.)
+  /(?:^|\/)(?:qwen|qwq)/i,
+  // DeepSeek & R1
+  /(?:^|\/)deepseek/i,
+  /(?:^|\/|[._-])r1(?:[._:-]|$)/i,
+  // Claude thinking models
+  /(?:^|\/)claude-(?:3-7-sonnet|opus-4|opus-5|sonnet-4|haiku-4-5)/i,
+  // Gemini thinking models
+  /(?:^|\/)gemini-(?:2\.[5-9]|2\.[0-4].*thinking|3)/i,
+  // Grok reasoning
+  ...GROK_REASONING_EFFORT_MODELS,
+  // GLM / Zhipu reasoning
+  /(?:^|\/)glm-(?:zero|4-plus|4-air)/i,
+  // Kimi / Moonshot reasoning
+  /(?:^|\/)kimi-(?:k1\.5|.*thinking)/i,
+  // Generic keywords
+  /(?:^|\/|[._-])(?:reasoner|reasoning|thinking|thought|think|cot)(?:[._:-]|$)/i,
+]
+
+export function isQwenModel(modelId: string): boolean {
+  return /(?:^|\/)(?:qwen|qwq)/i.test(modelId)
+}
+
+export function isReasoningModel(model: ProviderModelInfo | null | undefined | string): boolean {
+  if (!model) return false
+  const modelId = typeof model === 'string' ? model : model.modelId
+  if (!modelId) return false
+
+  // Exclude chat-only GPT models that explicitly do not support reasoning effort
+  if (matchesAny(modelId, GPT_NON_REASONING_CHAT_MODELS)) {
+    return false
+  }
+  // Exclude o1-preview and o1-mini which reject effort parameters
+  if (matchesAny(modelId, OPENAI_NO_EFFORT_PARAM_MODELS)) {
+    return false
+  }
+
+  // Check explicit capability if model info object is provided
+  if (typeof model !== 'string' && model.capabilities?.includes('reasoning')) {
+    return true
+  }
+
+  return matchesAny(modelId, REASONING_MODEL_PATTERNS)
+}
 
 function matchesAny(modelId: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(modelId))
@@ -200,9 +250,15 @@ function getGptMajorVersion(modelId: string): number {
 }
 
 function supportsOpenAIThinkingDisable(modelId: string): boolean {
-  // New GPT generations inherit effort controls, but an accepted off value must be
-  // established separately before offering minimal/none in the UI or request options.
-  return getGptMajorVersion(modelId) <= 5 && !matchesAny(modelId, OPENAI_NO_DISABLE_MODELS)
+  // o-series models reject disabling thinking.
+  if (matchesAny(modelId, OPENAI_NO_DISABLE_MODELS)) {
+    return false
+  }
+  const gptMajor = getGptMajorVersion(modelId)
+  if (gptMajor > 0) {
+    return gptMajor <= 5 && !matchesAny(modelId, OPENAI_NO_DISABLE_MODELS)
+  }
+  return true
 }
 
 function isGptEffortModel(modelId: string): boolean {
@@ -372,12 +428,30 @@ function usesModelApiStyleForReasoning(provider: ModelProvider | undefined): boo
 }
 
 function isOpenAICompatibleApiStyle(provider: ModelProvider | undefined, model: ProviderModelInfo): boolean {
-  // ChatboxAI, the OpenCode gateways, and custom providers can all expose OpenAI-compatible
-  // endpoints; treat a missing/`openai` API style as OpenAI-compatible so model-id
-  // based detection (e.g. DeepSeek) works the same way for all three.
+  if (model.apiStyle && model.apiStyle !== 'openai') return false
   return (
-    (provider === ModelProviderEnum.ChatboxAI || isOpenCodeGatewayProvider(provider) || isCustomProviderId(provider)) &&
-    (!model.apiStyle || model.apiStyle === 'openai')
+    provider === ModelProviderEnum.ChatboxAI ||
+    provider === ModelProviderEnum.OpenAI ||
+    provider === ModelProviderEnum.OpenAIResponses ||
+    provider === ModelProviderEnum.Azure ||
+    provider === ModelProviderEnum.Custom ||
+    provider === ModelProviderEnum.Ollama ||
+    provider === ModelProviderEnum.LMStudio ||
+    provider === ModelProviderEnum.SiliconFlow ||
+    provider === ModelProviderEnum.VolcEngine ||
+    provider === ModelProviderEnum.Groq ||
+    provider === ModelProviderEnum.MistralAI ||
+    provider === ModelProviderEnum.Moonshot ||
+    provider === ModelProviderEnum.MoonshotCN ||
+    provider === ModelProviderEnum.MiniMax ||
+    provider === ModelProviderEnum.MiniMaxCN ||
+    provider === ModelProviderEnum.GLM ||
+    provider === ModelProviderEnum.TencentHunyuan ||
+    provider === ModelProviderEnum.XiaomiMiMo ||
+    provider === ModelProviderEnum.LongCat ||
+    provider === ModelProviderEnum.ZhipuGLMCodingPlan ||
+    isOpenCodeGatewayProvider(provider) ||
+    isCustomProviderId(provider)
   )
 }
 
@@ -390,6 +464,8 @@ function usesOpenAICompatibleReasoningHistory(provider: ModelProvider | undefine
     !model.apiStyle &&
     (provider === ModelProviderEnum.ChatboxAI ||
       provider === ModelProviderEnum.Custom ||
+      provider === ModelProviderEnum.Ollama ||
+      provider === ModelProviderEnum.LMStudio ||
       isOpenCodeGatewayProvider(provider) ||
       isCustomProviderId(provider))
   )
@@ -570,11 +646,11 @@ export function getReasoningControlCapabilities(
   if (effectiveProvider === ModelProviderEnum.DeepSeek && isDeepSeekThinkingModel(model)) {
     return { supported: true, kind: isDeepSeekReasoningEffortModel(modelId) ? 'deepseek-effort' : 'toggle' }
   }
-  if (model && isOpenAICompatibleApiStyle(provider, model) && isDeepSeekThinkingModel(model)) {
-    return { supported: true, kind: isDeepSeekReasoningEffortModel(modelId) ? 'deepseek-effort' : 'toggle' }
+  if (effectiveProvider === ModelProviderEnum.XAI && matchesAny(modelId, GROK_REASONING_EFFORT_MODELS)) {
+    return { supported: true, kind: 'xai-effort' }
   }
-  if (isOpenAIStyleEffectiveProvider(effectiveProvider) && isGptEffortModel(modelId)) {
-    return { supported: true, kind: 'openai-effort' }
+  if (effectiveProvider === ModelProviderEnum.OpenRouter && isOpenRouterReasoningModel(model)) {
+    return { supported: true, kind: 'openrouter-reasoning' }
   }
   if (
     (effectiveProvider === ModelProviderEnum.Qwen || effectiveProvider === ModelProviderEnum.QwenPortal) &&
@@ -582,11 +658,18 @@ export function getReasoningControlCapabilities(
   ) {
     return { supported: true, kind: 'budget' }
   }
-  if (effectiveProvider === ModelProviderEnum.XAI && matchesAny(modelId, GROK_REASONING_EFFORT_MODELS)) {
-    return { supported: true, kind: 'xai-effort' }
-  }
-  if (effectiveProvider === ModelProviderEnum.OpenRouter && isOpenRouterReasoningModel(model)) {
-    return { supported: true, kind: 'openrouter-reasoning' }
+
+  // Universal OpenAI & OpenAI-compatible handling:
+  if (isOpenAIStyleEffectiveProvider(effectiveProvider) || (model && isOpenAICompatibleApiStyle(provider, model))) {
+    if (isGptEffortModel(modelId)) {
+      return { supported: true, kind: 'openai-effort' }
+    }
+    if (isDeepSeekThinkingModel(model)) {
+      return { supported: true, kind: isDeepSeekReasoningEffortModel(modelId) ? 'deepseek-effort' : 'toggle' }
+    }
+    if (isReasoningModel(model)) {
+      return { supported: true, kind: 'openai-effort' }
+    }
   }
 
   return DEFAULT_CAPABILITIES
@@ -614,13 +697,18 @@ function getApiStyleDisabledReason(
     }
   }
 
-  if (isGptEffortModel(modelId) && !isOpenAIStyleEffectiveProvider(effectiveProvider)) {
+  if (
+    isGptEffortModel(modelId) &&
+    !isOpenAIStyleEffectiveProvider(effectiveProvider) &&
+    !isOpenAICompatibleApiStyle(provider, model)
+  ) {
     return 'requires-openai-api-style'
   }
 
   if (
     isDeepSeekReasoningModel(modelId) &&
     effectiveProvider !== ModelProviderEnum.DeepSeek &&
+    !isOpenAIStyleEffectiveProvider(effectiveProvider) &&
     !isOpenAICompatibleApiStyle(provider, model) &&
     !isChatboxAIDeepSeekWithOfficialApiStyle(provider, model)
   ) {
@@ -628,10 +716,12 @@ function getApiStyleDisabledReason(
   }
 
   if (
-    matchesAny(modelId, QWEN_THINKING_MODELS) &&
+    (matchesAny(modelId, QWEN_THINKING_MODELS) || isQwenModel(modelId)) &&
     effectiveProvider !== ModelProviderEnum.Qwen &&
     effectiveProvider !== ModelProviderEnum.QwenPortal &&
-    !isOpenCodeGatewayProvider(provider)
+    !isOpenCodeGatewayProvider(provider) &&
+    !isOpenAIStyleEffectiveProvider(effectiveProvider) &&
+    !isOpenAICompatibleApiStyle(provider, model)
   ) {
     return 'requires-qwen-api-style'
   }
@@ -639,7 +729,9 @@ function getApiStyleDisabledReason(
   if (
     matchesAny(modelId, GROK_REASONING_EFFORT_MODELS) &&
     effectiveProvider !== ModelProviderEnum.XAI &&
-    !isOpenCodeGatewayProvider(provider)
+    !isOpenCodeGatewayProvider(provider) &&
+    !isOpenAIStyleEffectiveProvider(effectiveProvider) &&
+    !isOpenAICompatibleApiStyle(provider, model)
   ) {
     return 'requires-xai-api-style'
   }
@@ -693,6 +785,21 @@ function deriveReasoningControlLevel(
         getLegacyOpenAICompatibleThinkingType(providerOptions?.openaiCompatible?.reasoning),
       providerOptions?.deepseek?.reasoningEffort
     )
+  }
+  if (
+    model &&
+    (isOpenAICompatibleApiStyle(provider, model) || isOpenAIStyleEffectiveProvider(effectiveProvider))
+  ) {
+    const effort = providerOptions?.openai?.reasoningEffort ?? providerOptions?.openaiCompatible?.reasoningEffort
+    if (effort) return normalizeEffortToLevel(effort)
+    const openaiCompatible = providerOptions?.openaiCompatible
+    if (openaiCompatible?.enable_thinking === false) return 'off'
+    if (openaiCompatible?.enable_thinking === true) {
+      const budget = openaiCompatible.thinking_budget
+      if (budget !== undefined && budget >= QWEN_THINKING_BUDGET_BY_LEVEL.high) return 'high'
+      if (budget !== undefined && budget >= QWEN_THINKING_BUDGET_BY_LEVEL.medium) return 'medium'
+      return 'low'
+    }
   }
   if (effectiveProvider === ModelProviderEnum.Claude) {
     if (capabilities.kind === 'anthropic-adaptive-effort' || capabilities.kind === 'anthropic-effort') {
@@ -821,6 +928,24 @@ export function getReasoningProviderOptions(
       next.claude = { thinking: { type: 'disabled', budgetTokens: 0 } }
     } else if (isOpenAICompatibleApiStyle(provider, model as ProviderModelInfo) && isDeepSeekThinkingModel(model)) {
       next.deepseek = { thinking: { type: 'disabled' } }
+    } else if (
+      model &&
+      isOpenAIStyleEffectiveProvider(effectiveProvider) &&
+      isGptEffortModel(model.modelId)
+    ) {
+      next.openai = {
+        reasoningEffort: getOpenAIReasoningEffort(model?.modelId || '', level),
+        forceReasoning: true,
+      }
+    } else if (effectiveProvider === ModelProviderEnum.Qwen || effectiveProvider === ModelProviderEnum.QwenPortal) {
+      next.openaiCompatible = { enable_thinking: false }
+    } else if (
+      model &&
+      (isOpenAICompatibleApiStyle(provider, model) || isOpenAIStyleEffectiveProvider(effectiveProvider)) &&
+      (matchesAny(model.modelId, QWEN_THINKING_MODELS) || isReasoningModel(model))
+    ) {
+      next.openaiCompatible = { reasoningEffort: 'none', enable_thinking: false }
+      next.openai = { reasoningEffort: 'none' }
     } else if (isOpenAIStyleEffectiveProvider(effectiveProvider)) {
       next.openai = {
         reasoningEffort: getOpenAIReasoningEffort(model?.modelId || '', level),
@@ -834,8 +959,6 @@ export function getReasoningProviderOptions(
       next.google = { thinkingConfig: getGoogleOffThinkingConfig(model?.modelId || '') }
     } else if (effectiveProvider === ModelProviderEnum.DeepSeek) {
       next.deepseek = { thinking: { type: 'disabled' } }
-    } else if (effectiveProvider === ModelProviderEnum.Qwen || effectiveProvider === ModelProviderEnum.QwenPortal) {
-      next.openaiCompatible = { enable_thinking: false }
     }
     return compactProviderOptions(next)
   }
@@ -860,6 +983,46 @@ export function getReasoningProviderOptions(
       thinking: { type: 'enabled' },
       ...(isDeepSeekReasoningEffortModel(model?.modelId || '')
         ? { reasoningEffort: DEEPSEEK_EFFORT_BY_LEVEL[level] }
+        : {}),
+    }
+  } else if (
+    model &&
+    isOpenAIStyleEffectiveProvider(effectiveProvider) &&
+    isGptEffortModel(model.modelId)
+  ) {
+    next.openai = {
+      reasoningEffort: getOpenAIReasoningEffort(model?.modelId || '', level),
+      ...(effectiveProvider === ModelProviderEnum.OpenAIResponses
+        ? {
+            reasoningSummary: 'auto' as const,
+            include: ['reasoning.encrypted_content'],
+            forceReasoning: true,
+          }
+        : {}),
+    }
+  } else if (effectiveProvider === ModelProviderEnum.Qwen || effectiveProvider === ModelProviderEnum.QwenPortal) {
+    next.openaiCompatible = {
+      enable_thinking: true,
+      thinking_budget: QWEN_THINKING_BUDGET_BY_LEVEL[level],
+    }
+  } else if (
+    model &&
+    (isOpenAICompatibleApiStyle(provider, model) || isOpenAIStyleEffectiveProvider(effectiveProvider)) &&
+    (matchesAny(model?.modelId || '', QWEN_THINKING_MODELS) || isReasoningModel(model))
+  ) {
+    next.openaiCompatible = {
+      reasoningEffort: level,
+      enable_thinking: true,
+      thinking_budget: QWEN_THINKING_BUDGET_BY_LEVEL[level],
+    }
+    next.openai = {
+      reasoningEffort: level,
+      ...(effectiveProvider === ModelProviderEnum.OpenAIResponses
+        ? {
+            reasoningSummary: 'auto' as const,
+            include: ['reasoning.encrypted_content'],
+            forceReasoning: true,
+          }
         : {}),
     }
   } else if (isOpenAIStyleEffectiveProvider(effectiveProvider)) {
@@ -900,11 +1063,6 @@ export function getReasoningProviderOptions(
       ...(isDeepSeekReasoningEffortModel(model?.modelId || '')
         ? { reasoningEffort: DEEPSEEK_EFFORT_BY_LEVEL[level] }
         : {}),
-    }
-  } else if (effectiveProvider === ModelProviderEnum.Qwen || effectiveProvider === ModelProviderEnum.QwenPortal) {
-    next.openaiCompatible = {
-      enable_thinking: true,
-      thinking_budget: QWEN_THINKING_BUDGET_BY_LEVEL[level],
     }
   }
 
@@ -970,6 +1128,7 @@ function isOpenRouterReasoningModel(model: ProviderModelInfo | null | undefined)
   if (!model?.modelId) return false
   if (isDeepSeekReasoningModel(model.modelId)) return true
   if (isGptEffortModel(model.modelId)) return true
+  if (isReasoningModel(model)) return true
   return matchesAny(model.modelId, [
     ...CLAUDE_ADAPTIVE_EFFORT_MODELS,
     ...CLAUDE_EFFORT_MODELS,
@@ -987,7 +1146,9 @@ export function getOpenAIReasoningEffort(
   level: Exclude<ReasoningControlLevel, 'default'>
 ): NonNullable<ProviderOptions['openai']>['reasoningEffort'] {
   if (level === 'off') {
-    return matchesAny(modelId, OPENAI_NONE_EFFORT_MODELS) ? 'none' : 'minimal'
+    if (matchesAny(modelId, OPENAI_NONE_EFFORT_MODELS)) return 'none'
+    if (getGptMajorVersion(modelId) === 5) return 'minimal'
+    return 'none'
   }
   return level
 }
