@@ -1,0 +1,122 @@
+name: Build Windows 7 Packages
+
+on:
+  push:
+    branches:
+      - win7
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  pull_request:
+    branches:
+      - win7
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      build_debug:
+        description: 'Build Debug installer as well?'
+        type: boolean
+        default: true
+      runtime_assets_url:
+        description: 'Optional custom URL to prebuilt runtime-assets.zip'
+        type: string
+        default: ''
+
+jobs:
+  build-win7:
+    name: Build Win7 x64 Installers
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CHATBOX_OUTPUTS_DIR: ${{ github.workspace }}/outputs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: 'pnpm'
+
+      - name: Cache Win7 Runtime Assets
+        id: cache-runtime-assets
+        uses: actions/cache@v4
+        with:
+          path: ../runtime-assets
+          key: win7-runtime-assets-v2-${{ hashFiles('.erb/scripts/prepare-win7-runtime-assets.ps1') }}
+          restore-keys: |
+            win7-runtime-assets-v2-
+
+      - name: Prepare Win7 Runtime Assets
+        if: steps.cache-runtime-assets.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\.erb\scripts\prepare-win7-runtime-assets.ps1
+        env:
+          RUNTIME_ASSETS_ZIP_URL: ${{ inputs.runtime_assets_url }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Run Core Tests
+        run: |
+          pnpm exec vitest run src/shared/utils/reasoning-control.test.ts src/shared/providers/definitions/models/reasoning-request-options.test.ts src/renderer/components/InputBox/ReasoningControlButton.test.tsx src/main/skills/builtin/index.test.ts
+
+      - name: Build Application (Main, Preload, Renderer)
+        run: pnpm run build
+
+      - name: Package Windows 7 Release Installer
+        run: pnpm run build:win7
+
+      - name: Package Windows 7 Debug Installer
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        run: pnpm run build:win7-debug
+
+      - name: Compress Win7 Installers with 7z (Ultra LZMA2)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "release\7z"
+          Get-ChildItem -Path "release" -Filter "*.exe" | ForEach-Object {
+            Write-Host "Compressing $($_.Name) with 7z (Ultra LZMA2)..."
+            & 7z a -t7z -m0=lzma2 -mx=9 -ms=on "release\7z\$($_.Name).7z" $_.FullName
+          }
+          Get-ChildItem -Path "release\7z" | Select-Object Name, Length
+
+      - name: Upload Win7 Release Installer (.exe.7z)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Win7-x64-Release-exe-7z
+          path: release/7z/*Win7-x64-Setup.exe.7z
+          if-no-files-found: error
+
+      - name: Upload Win7 Debug Installer (.exe.7z)
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Win7-x64-Debug-exe-7z
+          path: release/7z/*Win7-x64-Debug-Setup.exe.7z
+          if-no-files-found: error
+
+      - name: Upload Win7 Release Installer (direct .exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Win7-x64-Release-exe
+          path: release/*Win7-x64-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload Win7 Debug Installer (direct .exe)
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Win7-x64-Debug-exe
+          path: release/*Win7-x64-Debug-Setup.exe
+          if-no-files-found: error

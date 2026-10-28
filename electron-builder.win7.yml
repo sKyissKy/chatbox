@@ -1,5 +1,6 @@
 productName: Chatbox
 appId: xyz.chatboxapp.app
+publish: null
 
 asar: true
 
