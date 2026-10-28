@@ -2,6 +2,12 @@
 // references at top level. Must run before any module that loads pdfjs, so keep
 // this as the very first import. See pdfjs-globals.ts for details.
 import './pdfjs-globals'
+import { initDebugLogger } from './debug-logger'
+import { applyWin7EarlyChromiumFlags, installWin7Polyfills, setupWin7CertificateHandling } from './win7-compat'
+
+initDebugLogger()
+installWin7Polyfills()
+applyWin7EarlyChromiumFlags()
 
 // Validate QA profile and task isolation before any Electron module can touch userData.
 import { CHATBOX_QA_PREFLIGHT } from './qa-preflight'
@@ -49,7 +55,6 @@ import { registerOAuthHandlers } from './oauth'
 import * as proxy from './proxy'
 import { getMainRuntimePolicy } from './qa-runtime'
 import { runRipgrepSearch } from './ripgrep-search'
-import { registerSandboxHandlers } from './sandbox'
 import { bufferToArrayBuffer } from './sandbox/read-file-base64'
 import { registerSkillsHandlers } from './skills'
 import {
@@ -147,7 +152,7 @@ const knowledgeBaseInitPromise =
     : import('./knowledge-base/index.js')
         .then((mod) => mod.getInitPromise())
         .catch((error) => {
-          log.error('[KB] Failed to initialize knowledge base during bootstrap:', error)
+          log.error('[KB] Failed to initialize knowledge base during bootstrap:', error?.stack || error?.message || error)
         })
 
 const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on'])
@@ -159,7 +164,7 @@ function initializeSessionAttachmentRagAfterAppReady() {
   return import('./session-attachment-rag/index.js')
     .then((mod) => mod.getInitPromise())
     .catch((error) => {
-      log.error('[SessionAttachmentRAG] Failed to initialize during bootstrap:', error)
+      log.error('[SessionAttachmentRAG] Failed to initialize during bootstrap:', error?.stack || error?.message || error)
     })
 }
 
@@ -689,7 +694,7 @@ if (quitForInstallRequested) {
       startupWindowCreated = true
       await initializeSessionAttachmentRagAfterAppReady()
       ensureTray()
-      // HarmonyOS HAP updates are distributed outside electron-updater.
+      setupWin7CertificateHandling()
       if (MAIN_RUNTIME_POLICY.startAppUpdater) {
         new AppUpdater(() => mainWindow)
       }
@@ -1184,7 +1189,9 @@ ipcMain.handle('window:is-maximized', () => {
   return mainWindow?.isMaximized()
 })
 
-registerSandboxHandlers()
+void import('./sandbox/index.js')
+  .then(({ registerSandboxHandlers }) => registerSandboxHandlers())
+  .catch((error) => log.error('[Sandbox] Failed to initialize sandbox handlers:', error))
 registerSkillsHandlers()
 registerOAuthHandlers()
 registerAgentPersonaHandlers()

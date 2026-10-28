@@ -6,6 +6,7 @@ import { getSettings } from './store-node'
 import { getLogger } from './util'
 
 const log = getLogger('app-updater')
+const isWin7Build = process.env.CHATBOX_WIN7_BUILD === 'true'
 
 function sendToRenderer(win: BrowserWindow | null, channel: string, data?: unknown) {
   if (win && !win.isDestroyed()) {
@@ -20,6 +21,21 @@ export class AppUpdater {
 
   constructor(getWindow: () => BrowserWindow | null) {
     this.getWindow = getWindow
+
+    ipcMain.removeHandler('updater:check')
+    ipcMain.removeHandler('install-update')
+
+    if (isWin7Build) {
+      ipcMain.handle('updater:check', () => {
+        sendToRenderer(this.getWindow(), 'updater:not-available', {
+          version: '1.23.5-win7',
+        })
+        return { started: false, disabled: true }
+      })
+      ipcMain.handle('install-update', () => ({ disabled: true }))
+      log.info('Auto updater disabled for Windows 7 compatibility build')
+      return
+    }
 
     log.transports.file.level = 'info'
     autoUpdater.logger = log
@@ -60,7 +76,6 @@ export class AppUpdater {
     })
 
     // Guard against double-registration (defensive — AppUpdater is singleton)
-    ipcMain.removeHandler('updater:check')
     ipcMain.handle('updater:check', async () => {
       if (this.isChecking) return { started: false }
       try {
@@ -76,7 +91,6 @@ export class AppUpdater {
       return { started: true }
     })
 
-    ipcMain.removeHandler('install-update')
     ipcMain.handle('install-update', () => {
       autoUpdater.quitAndInstall(...getQuitAndInstallArguments(process.platform))
     })
