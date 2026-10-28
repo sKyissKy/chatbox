@@ -1,0 +1,69 @@
+productName: Chatbox
+appId: xyz.chatboxapp.app
+
+asar: true
+
+asarUnpack:
+  - "**\\*.{node,dll}"
+
+files:
+  - "dist"
+  - "node_modules"
+  - "!node_modules/libsql/**"
+  - "!node_modules/@libsql/**"
+  - "!node_modules/@types"
+  - "!node_modules/undici-types"
+  - "package.json"
+
+beforePack: .erb/scripts/ensure-app-deps.cjs
+afterPack: .erb/scripts/after-pack.cjs
+
+directories:
+  app: release/app
+  buildResources: assets
+  output: release/build-win7
+
+extraResources:
+  - ./assets/**
+  - from: node_modules/@vscode/ripgrep-universal/bin/win32-x64/rg.exe
+    to: ripgrep/rg.exe
+  - from: node_modules/sql.js
+    to: app.asar.unpacked/node_modules/sql.js
+    filter:
+      - "**/*"
+  - from: node_modules/sql.js/dist/sql-wasm.wasm
+    to: sql-wasm.wasm
+  - from: ../runtime-assets/python
+    to: runtime/python
+    filter:
+      - "**/*"
+  - from: ../runtime-assets/node
+    to: runtime/node
+    filter:
+      - "**/*"
+  - from: ../runtime-assets/browser
+    to: runtime/browser
+    filter:
+      - "**/*"
+  - from: ../runtime-assets/bin
+    to: runtime/bin
+    filter:
+      - "**/*"
+  - from: ../runtime-assets/git
+    to: runtime/git
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  verifyUpdateCodeSignature: false
+  signAndEditExecutable: false
+
+nsis:
+  artifactName: Chatbox-${version}-Win7-x64-Setup.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  include: assets/installer.nsh
