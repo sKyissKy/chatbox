@@ -5,10 +5,28 @@ describe('builtinSkills', () => {
   it('only includes practical built-in skills', () => {
     expect(builtinSkills.map((item) => item.metadata.name)).toEqual([
       'data-analysis',
+      'office-automation',
+      'browser-automation',
+      'multimedia-tools',
+      'offline-agent-station',
+      'generative-ui',
+      'ml-best-practices',
+      'task-automation',
+      'skill-creator',
       'chatbox-product-info',
+      'reverse-engineering',
       'vibedrop',
       'frontend-design',
     ])
+  })
+
+  it('includes reverse engineering skill', () => {
+    const skill = builtinSkills.find((item) => item.metadata.name === 'reverse-engineering')
+
+    expect(skill).toBeDefined()
+    expect(skill?.metadata.description).toContain('Reverse Engineer Anything (REA)')
+    expect(skill?.body).toContain('Electron & Web Applications')
+    expect(skill?.body).toContain('Native Win32/x64 PE Binaries')
   })
 
   it('includes Chatbox product information skill', () => {
@@ -25,14 +43,13 @@ describe('builtinSkills', () => {
     expect(skill?.body).toContain('automated user-role notification')
   })
 
-  it('keeps data analysis aligned with the sandbox harness', () => {
+  it('keeps data analysis aligned with the offline Python and Node harness', () => {
     const skill = builtinSkills.find((item) => item.metadata.name === 'data-analysis')
 
     expect(skill).toBeDefined()
     expect(skill?.body).toContain('code_execution')
-    expect(skill?.body).toContain('Node.js, PowerShell on Windows, or Bash')
+    expect(skill?.body).toContain('Python 3.8 toolchain')
     expect(skill?.body).toContain('create_download')
-    expect(skill?.body).toContain('Python, pandas, matplotlib, R, and system package managers are not available')
   })
 
   it('includes VibeDrop static hosting skill', () => {
