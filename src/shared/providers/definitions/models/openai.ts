@@ -91,7 +91,17 @@ export default class OpenAI extends AbstractAISDKModel {
   }
 
   protected getCallSettings(options: CallChatCompletionOptions) {
-    const openaiOptions = normalizeOpenAIReasoningOptions(this.options.model.modelId, options.providerOptions?.openai)
+    const rawEffort =
+      options.providerOptions?.openai?.reasoningEffort ??
+      options.providerOptions?.openaiCompatible?.reasoningEffort
+    const forceReasoning =
+      options.providerOptions?.openai?.forceReasoning ??
+      (rawEffort !== undefined ? true : undefined)
+
+    const rawOpenAIOptions =
+      options.providerOptions?.openai ??
+      (rawEffort !== undefined ? { reasoningEffort: rawEffort, forceReasoning } : undefined)
+    const openaiOptions = normalizeOpenAIReasoningOptions(this.options.model.modelId, rawOpenAIOptions)
     const providerOptions = openaiOptions
       ? {
           openai: openaiOptions,

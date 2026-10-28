@@ -1,4 +1,5 @@
 import type { LanguageModelV3CallOptions } from '@ai-sdk/provider'
+import { augmentOpenAICompatibleRequestBody } from '@shared/models/utils/openai-chat-sse-termination'
 import type { CallChatCompletionOptions } from '@shared/models/types'
 import type { ProviderModelInfo } from '@shared/types'
 import type { ModelDependencies } from '@shared/types/adapters'
@@ -534,6 +535,109 @@ describe('reasoning request options', () => {
       openaiCompatible: { reasoningEffort: 'high' },
       'Custom OpenAI': { reasoningEffort: 'high' },
     })
+  })
+
+  it('forwards wire-compatible reasoning options for Qwen on custom OpenAI providers (Strata)', () => {
+    const customOpenAI = new CustomOpenAI(
+      {
+        apiKey: 'test-key',
+        apiHost: 'http://localhost:8080/v1',
+        apiPath: '/chat/completions',
+        model: {
+          modelId: 'qwen3.8-flash-next',
+          type: 'chat',
+          apiStyle: 'openai',
+          providerId: 'custom-provider-strata',
+        },
+      },
+      createDependencies()
+    )
+
+    const settings = (customOpenAI as unknown as ResolveCallSettingsHarness).resolveCallSettings({
+      providerOptions: {
+        openai: {
+          reasoningEffort: 'high',
+        },
+        openaiCompatible: {
+          reasoningEffort: 'high',
+          enable_thinking: true,
+          thinking_budget: 8192,
+        },
+      },
+    })
+
+    expect(settings.providerOptions).toEqual({
+      openaiCompatible: { reasoningEffort: 'high' },
+      'Custom OpenAI': { reasoningEffort: 'high' },
+    })
+  })
+
+  it('forwards wire-compatible reasoning options for Qwen on the OpenAI provider', () => {
+    const openai = new OpenAI(
+      {
+        apiKey: 'test-key',
+        apiHost: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: {
+          modelId: 'qwen-plus',
+          type: 'chat',
+          providerId: 'openai',
+        },
+        dalleStyle: 'vivid',
+        injectDefaultMetadata: false,
+        useProxy: false,
+      },
+      createDependencies()
+    )
+
+    const settings = (openai as unknown as ResolveCallSettingsHarness).resolveCallSettings({
+      providerOptions: {
+        openaiCompatible: {
+          reasoningEffort: 'high',
+          enable_thinking: true,
+          thinking_budget: 8192,
+        },
+      },
+    })
+
+    expect(settings.providerOptions).toEqual({
+      openai: { reasoningEffort: 'high', forceReasoning: true },
+    })
+  })
+
+  it('augments OpenAI-compatible request body with thinking parameters for non-official hosts', () => {
+    const dashscopeUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+    const officialUrl = 'https://api.openai.com/v1/chat/completions'
+
+    const highReq = {
+      body: JSON.stringify({ model: 'qwen-plus', reasoning_effort: 'high', stream: true }),
+    }
+    const offReq = {
+      body: JSON.stringify({ model: 'qwen-plus', reasoning_effort: 'none', stream: true }),
+    }
+
+    const highAugmented = augmentOpenAICompatibleRequestBody(dashscopeUrl, highReq)
+    expect(JSON.parse(highAugmented!.body as string)).toEqual({
+      model: 'qwen-plus',
+      reasoning_effort: 'high',
+      enable_thinking: true,
+      thinking_budget: 8192,
+      thinking: { type: 'enabled' },
+      stream: true,
+    })
+
+    const offAugmented = augmentOpenAICompatibleRequestBody(dashscopeUrl, offReq)
+    expect(JSON.parse(offAugmented!.body as string)).toEqual({
+      model: 'qwen-plus',
+      reasoning_effort: 'none',
+      enable_thinking: false,
+      thinking_budget: 0,
+      thinking: { type: 'disabled' },
+      stream: true,
+    })
+
+    // Official api.openai.com must not be augmented with non-standard fields
+    const officialAugmented = augmentOpenAICompatibleRequestBody(officialUrl, highReq)
+    expect(officialAugmented).toBe(highReq)
   })
 
   it('leaves reasoning provider options untouched when the provider id is unknown', () => {
