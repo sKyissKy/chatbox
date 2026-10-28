@@ -199,3 +199,12 @@ tmp_*.*
 
 # Local pnpm store accidentally created by pnpm install in worktrees
 .pnpm-store/
+
+# Release artifacts
+release/*.exe
+release/*.blockmap
+release/*.zip
+release/*.deb
+release/*.AppImage
+release/*.tar.gz
+

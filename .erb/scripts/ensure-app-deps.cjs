@@ -37,8 +37,6 @@ exports.default = async function ensureAppDeps(context) {
   verifyVersionsMatchPnpmWorkspace(appDir)
 
   // Remove type-only packages that are not needed at runtime.
-  // @anthropic-ai/sandbox-runtime incorrectly lists @types/lodash-es
-  // in production dependencies, pulling in @types/* and undici-types.
   const packagesToRemove = ['@types', 'undici-types']
   for (const pkg of packagesToRemove) {
     const pkgPath = path.join(nodeModulesDir, pkg)

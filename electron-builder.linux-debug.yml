@@ -1,0 +1,67 @@
+productName: Chatbox
+appId: xyz.chatboxapp.app
+publish: null
+
+asar: true
+
+asarUnpack:
+  - "**/*.{node,dll,so}"
+
+files:
+  - "dist"
+  - "node_modules"
+  - "!node_modules/@types"
+  - "!node_modules/undici-types"
+  - "package.json"
+
+beforePack: .erb/scripts/ensure-app-deps.cjs
+afterPack: .erb/scripts/after-pack.cjs
+
+directories:
+  app: release/app
+  buildResources: assets
+  output: release/build-linux-debug
+
+extraFiles:
+  - from: assets/debug.enabled
+    to: debug.enabled
+
+extraResources:
+  - ./assets/**
+  - from: assets/debug.enabled
+    to: debug.enabled
+  - from: ../runtime-assets/python
+    to: runtime/python
+    filter:
+      - "**/*"
+  - from: ../runtime-assets/node
+    to: runtime/node
+    filter:
+      - "**/*"
+  - from: ../runtime-assets/browser
+    to: runtime/browser
+    filter:
+      - "**/*"
+  - from: ../runtime-assets/bin
+    to: runtime/bin
+    filter:
+      - "**/*"
+
+linux:
+  category: Development
+  executableName: chatbox
+  synopsis: Chatbox AI Desktop Application (Debug Edition)
+  description: Multi-model AI desktop client for chat, coding and automation with verbose diagnostic logging.
+  target:
+    - deb
+    - AppImage
+    - tar.gz
+  artifactName: ${productName}-${version}-linux-debug-${arch}.${ext}
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnss3
+    - libxss1
+    - libasound2
+    - libsecret-1-0

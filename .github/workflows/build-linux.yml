@@ -1,0 +1,168 @@
+name: Build Linux Packages
+
+on:
+  push:
+    branches:
+      - linux
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  pull_request:
+    branches:
+      - linux
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      build_debug:
+        description: 'Build Debug packages as well?'
+        type: boolean
+        default: true
+      runtime_assets_url:
+        description: 'Optional custom URL to prebuilt runtime-assets tarball'
+        type: string
+        default: ''
+
+jobs:
+  build-linux:
+    name: Build Linux (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            deb_arch: amd64
+            appimage_arch: x86_64
+            os: ubuntu-22.04
+          - arch: arm64
+            deb_arch: arm64
+            appimage_arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CHATBOX_OUTPUTS_DIR: ${{ github.workspace }}/outputs
+      NODE_OPTIONS: "--max-old-space-size=8192"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Cache Linux Runtime Assets
+        id: cache-runtime-assets
+        uses: actions/cache@v4
+        with:
+          path: ../runtime-assets
+          key: linux-runtime-assets-v4-${{ matrix.arch }}-${{ hashFiles('.erb/scripts/prepare-linux-runtime-assets.mjs') }}
+          restore-keys: |
+            linux-runtime-assets-v4-${{ matrix.arch }}-
+
+      - name: Prepare Linux Runtime Assets
+        if: steps.cache-runtime-assets.outputs.cache-hit != 'true'
+        run: |
+          node ./.erb/scripts/prepare-linux-runtime-assets.mjs --arch=${{ matrix.arch }}
+        env:
+          RUNTIME_ASSETS_TAR_URL: ${{ inputs.runtime_assets_url }}
+
+      - name: Run Core Tests
+        run: |
+          pnpm exec vitest run src/shared/utils/reasoning-control.test.ts src/shared/providers/definitions/models/reasoning-request-options.test.ts src/renderer/components/InputBox/ReasoningControlButton.test.tsx src/main/skills/builtin/index.test.ts src/main/runtime-env.test.ts
+
+      - name: Build Application (Main, Preload, Renderer)
+        run: pnpm run build
+
+      - name: Package Linux (${{ matrix.arch }})
+        run: pnpm run build:linux:${{ matrix.arch }}
+
+      - name: Package Linux Debug Edition (${{ matrix.arch }})
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        run: pnpm run build:linux-debug:${{ matrix.arch }}
+
+      - name: Compress Outputs with 7z (Ultra LZMA2)
+        run: |
+          which 7z >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full)
+          mkdir -p release/7z
+          cd release
+          for f in *${{ matrix.deb_arch }}.deb *${{ matrix.appimage_arch }}.AppImage; do
+            if [ -f "$f" ]; then
+              echo "Compressing $f to 7z/${f}.7z ..."
+              7z a -t7z -m0=lzma2 -mx=9 -ms=on "7z/${f}.7z" "$f"
+            fi
+          done
+          echo "=== 7z Compressed Artifacts ==="
+          ls -lh 7z/
+
+      - name: Upload Debian Package (.deb.7z) (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-deb-7z
+          path: release/7z/*linux-${{ matrix.deb_arch }}.deb.7z
+          if-no-files-found: error
+
+      - name: Upload AppImage Package (.AppImage.7z) (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-AppImage-7z
+          path: release/7z/*linux-${{ matrix.appimage_arch }}.AppImage.7z
+          if-no-files-found: error
+
+      - name: Upload Debug Debian Package (.deb.7z) (${{ matrix.arch }})
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-Debug-deb-7z
+          path: release/7z/*linux-debug-${{ matrix.deb_arch }}.deb.7z
+          if-no-files-found: error
+
+      - name: Upload Debug AppImage Package (.AppImage.7z) (${{ matrix.arch }})
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-Debug-AppImage-7z
+          path: release/7z/*linux-debug-${{ matrix.appimage_arch }}.AppImage.7z
+          if-no-files-found: error
+
+      - name: Upload Debian Package (direct .deb) (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-deb
+          path: release/*linux-${{ matrix.deb_arch }}.deb
+          if-no-files-found: error
+
+      - name: Upload AppImage Package (direct .AppImage) (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-AppImage
+          path: release/*linux-${{ matrix.appimage_arch }}.AppImage
+          if-no-files-found: error
+
+      - name: Upload Debug Debian Package (direct .deb) (${{ matrix.arch }})
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-Debug-deb
+          path: release/*linux-debug-${{ matrix.deb_arch }}.deb
+          if-no-files-found: error
+
+      - name: Upload Debug AppImage Package (direct .AppImage) (${{ matrix.arch }})
+        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatbox-Linux-${{ matrix.arch }}-Debug-AppImage
+          path: release/*linux-debug-${{ matrix.appimage_arch }}.AppImage
+          if-no-files-found: error

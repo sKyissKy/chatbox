@@ -14,7 +14,6 @@
     "postinstall": "pnpm run rebuild && node ../../.erb/scripts/patch-libsql.cjs"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "^0.0.54",
     "@libsql/client": "^0.15.6"
   },
   "overrides": {

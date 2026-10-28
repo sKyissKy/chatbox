@@ -18,6 +18,12 @@ function resolveOutputsDir() {
 
 const optionalExternalOutputsDir = resolveOutputsDir()
 
+const VALID_OUTPUT_EXTENSIONS = ['.exe', '.blockmap', '.deb', '.AppImage', '.tar.gz', '.rpm', '.zip']
+
+function isValidArtifact(fileName) {
+  return VALID_OUTPUT_EXTENSIONS.some((ext) => fileName.endsWith(ext))
+}
+
 function exportAndClean(buildSubdir) {
   const buildDir = path.join(releaseDir, buildSubdir)
   if (!fs.existsSync(buildDir)) return
@@ -29,7 +35,7 @@ function exportAndClean(buildSubdir) {
 
   const files = fs.readdirSync(buildDir)
   for (const file of files) {
-    if (file.endsWith('.exe') || file.endsWith('.blockmap')) {
+    if (isValidArtifact(file)) {
       const srcPath = path.join(buildDir, file)
       const dstReleasePath = path.join(releaseDir, file)
       console.log(`[export-outputs] saving ${file} -> release/`)
@@ -52,6 +58,12 @@ if (targetType === 'release' || targetType === 'all') {
 }
 if (targetType === 'debug' || targetType === 'all') {
   exportAndClean('build-win7-debug')
+}
+if (targetType === 'linux' || targetType === 'all') {
+  exportAndClean('build-linux')
+}
+if (targetType === 'linux-debug' || targetType === 'all') {
+  exportAndClean('build-linux-debug')
 }
 
 // Clean up heavy intermediate node_modules

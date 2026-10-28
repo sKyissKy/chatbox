@@ -870,9 +870,6 @@ importers:
 
   release/app:
     dependencies:
-      '@anthropic-ai/sandbox-runtime':
-        specifier: ^0.0.54
-        version: 0.0.54
       '@libsql/client':
         specifier: ^0.15.6
         version: 0.15.15
@@ -1058,11 +1055,6 @@ packages:
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
-
-  '@anthropic-ai/sandbox-runtime@0.0.54':
-    resolution: {integrity: sha512-zszEoq/z02SgJLlPFcoegqz2UonYbn3Gi//Hwza6KdUolg9HeGw/mPuO7Ybp4EzgLxG6ifA4KOrozErYKJuFag==}
-    engines: {node: '>=18.0.0'}
-    hasBin: true
 
   '@apidevtools/json-schema-ref-parser@11.9.3':
     resolution: {integrity: sha512-60vepv88RwcJtSHrD6MjIL6Ta3SOYbgfnkHb+ppAVK+o9mXprRtulx7VlRl3lN3bbvysAfCS7WMVfhUYemB0IQ==}
@@ -14214,14 +14206,6 @@ snapshots:
     dependencies:
       package-manager-detector: 1.6.0
       tinyexec: 1.0.2
-
-  '@anthropic-ai/sandbox-runtime@0.0.54':
-    dependencies:
-      '@pondwader/socks5-server': 1.0.10
-      commander: 12.1.0
-      node-forge: 1.4.0
-      shell-quote: 1.10.0
-      zod: 3.25.76
 
   '@apidevtools/json-schema-ref-parser@11.9.3':
     dependencies:

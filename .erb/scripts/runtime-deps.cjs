@@ -1,12 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const unpackedRuntimePackages = [
-  {
-    name: '@anthropic-ai/sandbox-runtime',
-    includeDependencies: true,
-  },
-]
+const unpackedRuntimePackages = []
 
 function packagePath(baseDir, packageName) {
   return path.join(baseDir, ...packageName.split('/'))
@@ -23,6 +18,9 @@ function getPackageDependencyNames(nodeModulesDir, packageName) {
 }
 
 function getRequiredRuntimePackages(nodeModulesDir) {
+  if (unpackedRuntimePackages.length === 0) {
+    return []
+  }
   return [
     ...new Set(
       unpackedRuntimePackages.flatMap((runtimePackage) => {
@@ -37,6 +35,9 @@ function getRequiredRuntimePackages(nodeModulesDir) {
 
 function verifyNodeModulesTree(nodeModulesDir, stage) {
   const requiredPackages = getRequiredRuntimePackages(nodeModulesDir)
+  if (requiredPackages.length === 0) {
+    return
+  }
   const missing = requiredPackages.filter((packageName) => {
     return !fs.existsSync(path.join(packagePath(nodeModulesDir, packageName), 'package.json'))
   })
@@ -51,6 +52,9 @@ function verifyNodeModulesTree(nodeModulesDir, stage) {
 }
 
 function findUnpackedNodeModulesDirs(context) {
+  if (unpackedRuntimePackages.length === 0) {
+    return []
+  }
   const candidates = []
   const productFilename = context.packager?.appInfo?.productFilename
 
@@ -79,6 +83,9 @@ function findUnpackedNodeModulesDirs(context) {
 }
 
 function verifyInstalledRuntimeDeps(appDir) {
+  if (unpackedRuntimePackages.length === 0) {
+    return
+  }
   verifyNodeModulesTree(path.join(appDir, 'node_modules'), 'installed')
 }
 
@@ -103,6 +110,9 @@ function ensureNodeModulesDir(dir) {
 }
 
 function ensureUnpackedRuntimeDeps(context) {
+  if (unpackedRuntimePackages.length === 0) {
+    return
+  }
   const appDir = path.join(__dirname, '..', '..', 'release', 'app')
   const sourceNodeModulesDir = path.join(appDir, 'node_modules')
   const requiredPackages = getRequiredRuntimePackages(sourceNodeModulesDir)
@@ -146,6 +156,9 @@ function ensureUnpackedRuntimeDeps(context) {
 exports.ensureUnpackedRuntimeDeps = ensureUnpackedRuntimeDeps
 
 exports.default = async function verifyPackagedRuntimeDeps(context) {
+  if (unpackedRuntimePackages.length === 0) {
+    return
+  }
   const nodeModulesDirs = findUnpackedNodeModulesDirs(context)
 
   if (nodeModulesDirs.length === 0) {
