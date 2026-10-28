@@ -49,14 +49,18 @@ const useChatboxAIModels = () => {
           aiProvider: ModelProviderEnum.ChatboxAI,
           licenseKey,
           language,
+        }).catch((error) => {
+          console.debug('[Chatbox AI model_manifest] failed', error)
+          return null
         }),
         getChatboxAIModelList({ licenseKey, language }).catch((error) => {
-          console.error('[Chatbox AI model_list] failed', error)
+          console.debug('[Chatbox AI model_list] failed', error)
           return null
         }),
       ])
       const modelListModels = modelListToProviderModels(modelList)
-      const models = modelListModels.length > 0 ? modelListModels : manifest.models.map(toProviderModelInfo)
+      const manifestModels = manifest?.models ? manifest.models.map(toProviderModelInfo) : []
+      const models = modelListModels.length > 0 ? modelListModels : manifestModels
 
       // 只更新 ChatboxAI provider 的 models 配置，不影响其他 provider
       if (models.length > 0) {
@@ -70,22 +74,24 @@ const useChatboxAIModels = () => {
       }
 
       return {
-        ...manifest,
+        groupName: manifest?.groupName || 'Chatbox AI',
         models,
+        imageModels: manifest?.imageModels || [],
         modelList,
       }
     },
+    retry: false,
     staleTime: 3600 * 1000,
   })
 
   const allChatboxAIModels = useMemo(
-    () => data?.models || chatboxAISettings?.models || [],
+    () => (data?.models && data.models.length > 0 ? data.models : chatboxAISettings?.models || []),
     [data, chatboxAISettings?.models]
   )
 
   const chatboxAIImageModels = useMemo(
     () =>
-      data?.imageModels.map(
+      data?.imageModels?.map(
         (item) =>
           ({
             modelId: item.modelId,

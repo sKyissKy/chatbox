@@ -28,6 +28,13 @@ export function isFirstDay(): boolean {
   return today.isSame(installDay, 'day')
 }
 
+function isWin7Environment(): boolean {
+  return (
+    process.env.CHATBOX_WIN7_BUILD === 'true' ||
+    (typeof navigator !== 'undefined' && /Windows NT 6\.1/i.test(navigator.userAgent))
+  )
+}
+
 export default function useVersion() {
   const remoteConfig = useAtomValue(remoteConfigAtom)
   const [version, _setVersion] = useState('')
@@ -46,21 +53,27 @@ export default function useVersion() {
   )
   const updateCheckTimer = useRef<NodeJS.Timeout>()
   useEffect(() => {
+    const isWin7 = isWin7Environment()
     const handler = async () => {
       const config = await platform.getConfig()
       const settings = await platform.getSettings()
       const version = await platform.getVersion()
       _setVersion(version)
+      if (isWin7 || !settings?.autoUpdate) {
+        return
+      }
       try {
         const os = await platform.getPlatform()
         const needUpdate = await remote.checkNeedUpdate(version, os, config, settings)
         setNeedCheckUpdate(needUpdate)
       } catch (e) {
-        console.error('Failed to check for updates:', e)
+        console.debug('Failed to check for updates:', e)
       }
     }
     handler()
-    updateCheckTimer.current = setInterval(handler, 2 * 60 * 60 * 1000)
+    if (!isWin7) {
+      updateCheckTimer.current = setInterval(handler, 2 * 60 * 60 * 1000)
+    }
     return () => {
       if (updateCheckTimer.current) {
         clearInterval(updateCheckTimer.current)
