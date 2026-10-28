@@ -1,6 +1,18 @@
 import { z } from 'zod'
 
-export const DEFAULT_ENABLED_BUILTIN_SKILL_NAMES = ['chatbox-product-info', 'vibedrop'] as const
+export const DEFAULT_ENABLED_BUILTIN_SKILL_NAMES = [
+  'chatbox-product-info',
+  'vibedrop',
+  'office-automation',
+  'browser-automation',
+  'multimedia-tools',
+  'offline-agent-station',
+  'generative-ui',
+  'ml-best-practices',
+  'task-automation',
+  'skill-creator',
+  'data-analysis',
+] as const
 
 // ===== Skill Source Types =====
 
