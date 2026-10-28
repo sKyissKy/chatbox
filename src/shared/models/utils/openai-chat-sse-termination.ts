@@ -70,6 +70,62 @@ function hasStreamingRequestBody(init?: RequestInit): boolean {
   }
 }
 
+function isOfficialOpenAIHost(input: RequestInfo | URL): boolean {
+  try {
+    const url = getRequestUrl(input)
+    const parsed = new URL(url)
+    return parsed.hostname === 'api.openai.com'
+  } catch {
+    return false
+  }
+}
+
+export function augmentOpenAICompatibleRequestBody(input: RequestInfo | URL, init?: RequestInit): RequestInit | undefined {
+  if (!init || typeof init.body !== 'string' || !isChatCompletionsUrl(input)) {
+    return init
+  }
+  // Official OpenAI API enforces strict schemas and rejects unknown fields like enable_thinking.
+  // Only augment third-party / OpenAI-compatible / DashScope endpoints.
+  if (isOfficialOpenAIHost(input)) {
+    return init
+  }
+
+  try {
+    const body: unknown = JSON.parse(init.body)
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      const record = body as Record<string, unknown>
+      let modified = false
+
+      if (typeof record.reasoning_effort === 'string') {
+        const effort = record.reasoning_effort
+        const isOff = effort === 'none' || effort === 'minimal'
+        if (!('enable_thinking' in record)) {
+          record.enable_thinking = !isOff
+          modified = true
+        }
+        if (!('thinking_budget' in record)) {
+          record.thinking_budget = isOff ? 0 : effort === 'low' ? 1024 : effort === 'medium' ? 4096 : 8192
+          modified = true
+        }
+        if (!('thinking' in record)) {
+          record.thinking = { type: isOff ? 'disabled' : 'enabled' }
+          modified = true
+        }
+      }
+
+      if (modified) {
+        return {
+          ...init,
+          body: JSON.stringify(record),
+        }
+      }
+    }
+  } catch {
+    // ignore non-json
+  }
+  return init
+}
+
 /**
  * OpenAI Chat Completions and compatible APIs define an exact `data: [DONE]`
  * SSE event as the logical end of a streamed response. Close the derived stream
@@ -135,7 +191,8 @@ export function maybeWrapOpenAIChatCompletionSseResponse(
 
 export function createOpenAIChatCompletionSseFetch(fetchFunction?: typeof globalThis.fetch): typeof globalThis.fetch {
   return async (input, init) => {
-    const response = await (fetchFunction ?? globalThis.fetch)(input, init)
-    return maybeWrapOpenAIChatCompletionSseResponse(input, init, response)
+    const effectiveInit = augmentOpenAICompatibleRequestBody(input, init)
+    const response = await (fetchFunction ?? globalThis.fetch)(input, effectiveInit)
+    return maybeWrapOpenAIChatCompletionSseResponse(input, effectiveInit, response)
   }
 }
