@@ -12,8 +12,20 @@ import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { pathToFileURL } from 'node:url'
-import type { SandboxRuntimeConfig } from '@anthropic-ai/sandbox-runtime'
 import { app, type UtilityProcess, utilityProcess } from 'electron'
+
+export interface SandboxRuntimeConfig {
+  ripgrep?: { command: string }
+  network?: {
+    deniedDomains?: string[]
+  }
+  filesystem?: {
+    denyRead?: string[]
+    allowWrite?: string[]
+    denyWrite?: string[]
+  }
+}
+import { augmentRuntimeEnvironment } from '../runtime-env'
 import { sandboxAttachmentRelPath } from '../../shared/sandbox/attachment-path'
 import {
   SANDBOX_EXEC_ERROR_CODES,
@@ -106,8 +118,18 @@ interface SandboxSession {
   sandboxConfig: ReturnType<typeof buildConfig> | null
 }
 
-// Global SandboxManager ref — initialized once, shared across sessions
-let globalSandboxManager: typeof import('@anthropic-ai/sandbox-runtime')['SandboxManager'] | null = null
+// Generic SandboxManager interface for optional isolation on POSIX
+interface GenericSandboxManager {
+  initialize(config: unknown): Promise<void>
+  wrapWithSandboxArgv(
+    command: string,
+    options?: unknown,
+    customConfig?: unknown
+  ): Promise<{ argv: string[]; env: NodeJS.ProcessEnv }>
+  checkDependencies(): { errors: string[] }
+}
+
+let globalSandboxManager: GenericSandboxManager | null = null
 let globalInitialized = false
 
 const sessions = new Map<string, SandboxSession>()
@@ -425,7 +447,7 @@ function buildConfig(
 
 function getSandboxRuntimeImportTarget(): string {
   if (!app.isPackaged) {
-    return '@anthropic-ai/sandbox-runtime'
+    return 'sandbox-runtime'
   }
 
   const candidateEntries = [
@@ -433,7 +455,6 @@ function getSandboxRuntimeImportTarget(): string {
       process.resourcesPath,
       'app.asar.unpacked',
       'node_modules',
-      '@anthropic-ai',
       'sandbox-runtime',
       'dist',
       'index.js'
@@ -442,7 +463,6 @@ function getSandboxRuntimeImportTarget(): string {
       process.resourcesPath,
       'app.asar',
       'node_modules',
-      '@anthropic-ai',
       'sandbox-runtime',
       'dist',
       'index.js'
@@ -455,7 +475,7 @@ function getSandboxRuntimeImportTarget(): string {
     }
   }
 
-  return '@anthropic-ai/sandbox-runtime'
+  return 'sandbox-runtime'
 }
 
 /** @deprecated Use shellQuote from '@shared/utils/shell' instead. Kept for backwards compat. */
@@ -638,7 +658,7 @@ export async function initSandbox(
   const safeUserWriteGrants = getSafeUserWriteGrants(userWritePaths)
   const workingDirectoryGrant = createWritePathGrant(workDir)
 
-  // Native Windows and HarmonyOS paths skip @anthropic-ai/sandbox-runtime. HarmonyOS reports
+  // Native Windows and HarmonyOS paths skip external sandbox-runtime. HarmonyOS reports
   // process.platform=linux, but cannot run bubblewrap/socat inside a HAP; Node code is launched
   // through Electron's utilityProcess instead (see execHarmonyNodeCode below).
   if (process.platform === 'win32' || isHarmonyBuild()) {
@@ -1012,9 +1032,7 @@ async function execHarmonyNodeCode(params: {
  * macOS/Linux: the spawn argv comes from SandboxManager.wrapWithSandboxArgv() and runs with
  * {shell:false}, applying SRT confinement. HarmonyOS: Node.js runs through Electron's
  * utilityProcess inside the application sandbox; Bash and PowerShell are unavailable.
- * Windows: @anthropic-ai/sandbox-runtime does not run there, so the program executes natively
- * with NO OS sandbox (see docs/technical/windows-sandbox.md) — the session working directory
- * is the only scoping.
+ * Windows: executes natively with the session working directory scoping.
  */
 export async function execCode(params: {
   code: string
@@ -1122,7 +1140,10 @@ export async function execCode(params: {
   // Resolve the program that reads the code from stdin.
   let cmd: string
   let args: string[]
-  if (params.language === 'node') {
+  if (params.language === 'python') {
+    cmd = 'python'
+    args = ['-']
+  } else if (params.language === 'node') {
     // The bundled Electron binary runs as Node via ELECTRON_RUN_AS_NODE; with no script arg and
     // piped (non-TTY) stdin it executes the piped program.
     cmd = process.execPath
@@ -1165,7 +1186,7 @@ export async function execCode(params: {
   if (isWindows) {
     spawnCmd = cmd
     spawnArgs = args
-    spawnEnv = { ...process.env, ...envOverrides }
+    spawnEnv = augmentRuntimeEnvironment({ ...process.env, ...envOverrides })
   } else {
     const mgr = globalSandboxManager
     if (!mgr) {
@@ -1353,7 +1374,32 @@ export async function runSandboxCommand(params: {
   }
   if (!params.sessionId) throw new Error('Session ID is required for run_command')
   if (process.platform === 'win32') {
-    throw new Error('Windows has no confined command runner; use the host approval path')
+    const defaultCwd = session.userWriteGrants[0]?.root ?? session.workingDirectory
+    const cwd = params.workdir ? path.resolve(defaultCwd, normalizeWindowsShellPath(params.workdir)) : defaultCwd
+    const cwdValidation = await validateSessionWritePath(session, cwd)
+    if (!cwdValidation.valid || !existsSync(cwd) || !statSync(cwd).isDirectory()) {
+      return {
+        stdout: '',
+        stderr: cwdValidation.error ?? 'Working directory does not exist or is not an authorized directory',
+        exitCode: 1,
+        cwd,
+      }
+    }
+    const shellLang: SandboxExecLanguage = params.shell === 'bash' ? 'bash' : 'powershell'
+    const result = await execCode({
+      code: params.command,
+      language: shellLang,
+      timeout: params.timeout,
+      cwd,
+      sessionId: params.sessionId,
+      toolCallId: params.toolCallId,
+      outputFilePath: createCommandOutputCapturePath(params.toolCallId),
+    })
+    return {
+      ...result,
+      cwd,
+      sandbox: { denied: false },
+    }
   }
   if (params.shell !== 'bash') {
     throw new Error('Sandboxed run_command uses Bash on macOS and Linux')
@@ -1732,7 +1778,6 @@ export async function checkAvailability(): Promise<{ available: boolean; reason?
     // packaged Node runtime without going through the blocked child_process/appspawn path.
     return { available: true }
   }
-
   if (process.platform === 'darwin') {
     return { available: true }
   }

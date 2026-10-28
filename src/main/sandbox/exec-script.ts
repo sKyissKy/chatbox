@@ -4,8 +4,8 @@ import { shellQuote } from '../../shared/utils/shell'
 // Pure helpers for building the stdin program and cleaning stderr for sandbox code execution.
 
 const POWERSHELL_UTF8_PREAMBLE = [
-  '[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)',
-  '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)',
+  '[Console]::InputEncoding = (New-Object System.Text.UTF8Encoding $false)',
+  '[Console]::OutputEncoding = (New-Object System.Text.UTF8Encoding $false)',
   '$OutputEncoding = [Console]::OutputEncoding',
 ].join('\n')
 // Kept free of any Electron/Node-runtime imports so they can be unit-tested in isolation.
@@ -62,7 +62,7 @@ export function buildPowerShellStdinScript(code: string, nodeExecPath?: string):
   }
   $global:LASTEXITCODE = $chatboxNodeExitCode
   if ($chatboxNodeExitCode -ne 0) {
-    $chatboxNodeException = [Exception]::new('Bundled node process failed')
+    $chatboxNodeException = New-Object Exception 'Bundled node process failed'
     $chatboxNodeException.Data['ChatboxNodeExitCode'] = $chatboxNodeExitCode
     throw $chatboxNodeException
   }
@@ -96,7 +96,7 @@ export function buildSandboxStdinScript(
   injectNodeShim: boolean,
   injectWindowsCdShim = false
 ): string {
-  if (language === 'node') return code
+  if (language === 'node' || language === 'python') return code
   if (language === 'powershell') return buildPowerShellStdinScript(code)
   const nodeShim = injectNodeShim ? `node() { ELECTRON_RUN_AS_NODE=1 ${shellQuote(nodeExecPath)} "$@"; }\n` : ''
   const windowsCdShim = injectWindowsCdShim ? WINDOWS_CD_SHIM : ''

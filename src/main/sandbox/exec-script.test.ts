@@ -28,8 +28,8 @@ describe('buildSandboxStdinScript', () => {
   test('powershell language configures UTF-8 before executing the code from stdin', () => {
     const code = "[Console]::Out.WriteLine('hello from PowerShell')"
     const script = buildSandboxStdinScript(code, 'powershell', 'unused', false, true)
-    expect(script).toContain('[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)')
-    expect(script).toContain('[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)')
+    expect(script).toContain('[Console]::InputEncoding = (New-Object System.Text.UTF8Encoding $false)')
+    expect(script).toContain('[Console]::OutputEncoding = (New-Object System.Text.UTF8Encoding $false)')
     expect(script.endsWith(`${code}\n`)).toBe(true)
   })
 
@@ -115,8 +115,8 @@ describe('buildPowerShellStdinScript', () => {
 
     expect(script).toBe(
       [
-        '[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)',
-        '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)',
+        '[Console]::InputEncoding = (New-Object System.Text.UTF8Encoding $false)',
+        '[Console]::OutputEncoding = (New-Object System.Text.UTF8Encoding $false)',
         '$OutputEncoding = [Console]::OutputEncoding',
         code,
         '',

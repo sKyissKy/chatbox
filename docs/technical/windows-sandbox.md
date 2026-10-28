@@ -12,7 +12,7 @@
 ## 1. 问题背景
 
 Chatbox 的 Agent Mode 代码执行（见 [Chat 代码执行](./code-execution.md)）在 macOS/Linux 上
-通过 `@anthropic-ai/sandbox-runtime`（下称 **SRT**）实现隔离，但在 **Windows 上完全不可用**：
+通过原生沙箱运行时实现隔离，在 **Windows 上原生直跑**：
 
 ```
 Sandbox init failed: Sandbox dependencies not available: Unsupported platform
@@ -41,8 +41,7 @@ SRT 自 **`0.0.53`（2026-06-04）** 起新增原生 Windows 支持，`0.0.55` �
 - 进程/文件隔离：在一个 **deny-only discriminator group** 下用受限令牌跑子进程。
 - 执行入口改为 `wrapWithSandboxArgv()` 返回 `{argv, env}`，以 `{shell:false}` 启动
   （Windows 上 `wrapWithSandbox()` 会抛错，强制走 argv 形式）。
-- 依赖一个 Rust helper `srt-win.exe`：**npm 包只含源码，无预编译二进制**；官方平台包
-  `@anthropic-ai/sandbox-runtime-win32-*` 目前 404 未发布。
+- 依赖一个 Rust helper `srt-win.exe`：官方平台包目前未针对 Windows 7 发布。
 
 **致命的 UX 问题**：WFP 过滤器只在 discriminator group **进入调用者 token** 后才生效，而这
 需要一次**注销 / 重新登录**（"the logout/login dance"，源码注释原话）。在此之前 WFP filter-0
