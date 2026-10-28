@@ -136,17 +136,21 @@ export async function checkNeedUpdate(version: string, os: string, config: Confi
   type Response = {
     need_update?: boolean
   }
-  // const res = await ofetch<Response>(`${RELEASE_ORIGIN}/chatbox_need_update/${version}`, {
-  const res = await ofetch<Response>(`${getAPIOrigin()}/chatbox_need_update/${version}`, {
-    method: 'POST',
-    retry: 3,
-    body: {
-      uuid: config.uuid,
-      os: os,
-      allowReportingAndTracking: settings.allowReportingAndTracking ? 1 : 0,
-    },
-  })
-  return !!res.need_update
+  try {
+    const res = await ofetch<Response>(`${getAPIOrigin()}/chatbox_need_update/${version}`, {
+      method: 'POST',
+      retry: 1,
+      body: {
+        uuid: config.uuid,
+        os: os,
+        allowReportingAndTracking: settings.allowReportingAndTracking ? 1 : 0,
+      },
+    })
+    return !!res.need_update
+  } catch (error) {
+    log.debug('checkNeedUpdate failed (offline or network unreachable)', error)
+    return false
+  }
 }
 
 // export async function getSponsorAd(): Promise<null | SponsorAd> {

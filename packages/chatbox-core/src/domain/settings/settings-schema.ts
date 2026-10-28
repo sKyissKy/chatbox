@@ -3,7 +3,15 @@ import { DEFAULT_INTERFACE_COLORS, getDefaultInterfaceColors } from '../../theme
 import { MEMORY_STATE_TOKEN_MAX_CHARS, SessionPromptContextSnapshotSchema } from '../../types/agent-persona'
 import { COMMAND_APPROVAL_MODES } from '../../types/command-execution'
 import { ModelProviderEnum, ModelProviderType } from '../../types/provider'
-import { DEFAULT_ENABLED_BUILTIN_SKILL_NAMES, SkillSettingsSchema } from '../../types/skills'
+import { DEFAULT_ENABLED_BUILTIN_SKILL_NAMES } from '../../types/skills'
+
+export const SkillSettingsSchema = z.object({
+  enabledSkillNames: z.array(z.string()).default([...DEFAULT_ENABLED_BUILTIN_SKILL_NAMES]),
+  translationEnabled: z.boolean().default(true),
+  builtinDefaultsInitialized: z.boolean().default(false),
+  appliedDefaultBuiltinSkillNames: z.array(z.string()).default([...DEFAULT_ENABLED_BUILTIN_SKILL_NAMES]),
+})
+export type SkillSettings = z.infer<typeof SkillSettingsSchema>
 
 // Re-export for backward compatibility
 export { ModelProviderType } from '../../types/provider'

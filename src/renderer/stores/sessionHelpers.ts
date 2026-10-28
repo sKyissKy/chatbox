@@ -60,6 +60,8 @@ export async function getMetaStorage() {
 const log = getLogger('session-helpers')
 const FILE_STORAGE_QUOTA_EXCEEDED_ERROR = 'file_storage_quota_exceeded'
 const FILE_PREPROCESS_FAILED_ERROR = 'file_preprocess_failed'
+const isWin7Build = process.env.CHATBOX_WIN7_BUILD === 'true'
+const isWin7RagEnabled = isWin7Build || process.env.CHATBOX_WIN7_RAG === 'true'
 const SESSION_ATTACHMENT_RAG_INLINE_BYTE_THRESHOLD = 256 * 1024
 export const SESSION_ATTACHMENT_RAG_MAX_PARSED_BYTE_LENGTH = 6 * 1024 * 1024
 let sessionRagCapabilityCache:
@@ -596,6 +598,7 @@ async function analyzePickedAsset(input: {
   const isSessionAttachmentRagFileType = isSessionAttachmentRagSupportedFilePath(asset.name)
   const exceedsSessionAttachmentRagThreshold =
     platform.isDesktopLike &&
+    (!isWin7Build || isWin7RagEnabled) &&
     isSessionAttachmentRagFileType &&
     stats.byteLength > SESSION_ATTACHMENT_RAG_INLINE_BYTE_THRESHOLD
   const sessionAttachmentRagAllowed = exceedsSessionAttachmentRagThreshold ? await canUseSessionAttachmentRag() : false

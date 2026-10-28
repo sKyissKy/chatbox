@@ -1,4 +1,5 @@
 import { getDefaultDocumentParser } from '@chatbox/core/domain/settings'
+import { DEFAULT_ENABLED_BUILTIN_SKILL_NAMES } from '@shared/types/skills'
 import {
   type SettingsStoreState,
   selectLanguage,
@@ -38,7 +39,24 @@ export function initSettingsStore() {
         if (providersCount === 0) {
           log.info('[CONFIG_DEBUG] onFinishHydration: providersCount=0')
         }
-        return state
+        // Ensure all built-in offline skills are enabled by default even on pre-existing user settings
+        const skillSettings = state.skills || { enabledSkillNames: [] }
+        const currentEnabled = skillSettings.enabledSkillNames || []
+        const missingDefaults = DEFAULT_ENABLED_BUILTIN_SKILL_NAMES.filter(
+          (name) => !currentEnabled.includes(name)
+        )
+        if (missingDefaults.length > 0) {
+          settingsStore.setState((s) => ({
+            skills: {
+              ...s.skills,
+              enabledSkillNames: [...new Set([...currentEnabled, ...missingDefaults])],
+              appliedDefaultBuiltinSkillNames: [
+                ...new Set([...(s.skills?.appliedDefaultBuiltinSkillNames || []), ...DEFAULT_ENABLED_BUILTIN_SKILL_NAMES]),
+              ],
+            },
+          }))
+        }
+        return settingsStore.getState()
       })
   }
   return initSettingsStorePromise

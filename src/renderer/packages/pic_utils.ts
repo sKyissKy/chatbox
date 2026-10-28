@@ -86,6 +86,49 @@ export async function getImageBase64AndResize(file: File, options: ImageResizeOp
   })
 }
 
+export async function renderPdfPagesToPngBase64(file: File): Promise<string[]> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js')
+  const data = new Uint8Array(await file.arrayBuffer())
+  const loadingTask = pdfjs.getDocument({
+    data,
+    disableWorker: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  } as unknown as Parameters<typeof pdfjs.getDocument>[0])
+  const pdf = await loadingTask.promise
+  const pageImages: string[] = []
+  const maxDimension = 1568
+
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber)
+      const baseViewport = page.getViewport({ scale: 1 })
+      const scale = Math.min(2, maxDimension / Math.max(baseViewport.width, baseViewport.height))
+      const viewport = page.getViewport({ scale })
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('cannot get canvas context')
+      }
+
+      canvas.width = Math.ceil(viewport.width)
+      canvas.height = Math.ceil(viewport.height)
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      await page.render({ canvasContext: ctx, viewport }).promise
+      pageImages.push(canvas.toDataURL('image/png', 1.0))
+      page.cleanup()
+      canvas.width = 0
+      canvas.height = 0
+    }
+  } finally {
+    await pdf.cleanup()
+    await loadingTask.destroy()
+  }
+
+  return pageImages
+}
+
 export function svgCodeToBase64(svgCode: string) {
   return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgCode)))
 }
