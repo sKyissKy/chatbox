@@ -11,6 +11,11 @@ const appNodeModulesPath = path.join(appPath, 'node_modules')
 const appPackageJson = require('../../release/app/package.json')
 const dependencies = appPackageJson.dependencies || {}
 
+if (process.env.CHATBOX_WIN7_BUILD === 'true') {
+  console.log('[electron-rebuild] skipping for win7 build')
+  return
+}
+
 if (Object.keys(dependencies).length > 0 && fs.existsSync(appNodeModulesPath)) {
     const electronRebuildCmd =
         '../../node_modules/.bin/electron-rebuild --force --types prod,dev,optional --module-dir .'

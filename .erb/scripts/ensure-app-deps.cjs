@@ -8,8 +8,8 @@
  * so transitive deps like detect-libc, node-fetch, zod end up
  * missing from the asar.
  *
- * This script runs `npm ci --omit=dev` in release/app/
- * to create a complete, flat node_modules/ before packaging,
+ * This script runs pnpm in release/app/ with an isolated node linker
+ * to create a complete node_modules/ before packaging,
  * then removes dev-only artifacts that shouldn't ship.
  */
 const { execSync } = require('child_process')
@@ -27,19 +27,26 @@ exports.default = async function ensureAppDeps(context) {
   }
 
   console.log('[ensure-app-deps] Installing production dependencies in release/app/ ...')
-  execSync('npm ci --omit=dev --ignore-scripts', {
+  execSync('pnpm install --ignore-workspace --no-lockfile --prod --ignore-scripts --node-linker=hoisted --config.confirmModulesPurge=false', {
     cwd: appDir,
     stdio: 'inherit',
-    env: { ...process.env, npm_config_registry: 'https://registry.npmmirror.com' },
+    env: { ...process.env },
   })
 
   verifyInstalledRuntimeDeps(appDir)
-  verifyVersionsMatchPnpmWorkspace(appDir)
+  if (process.env.CHATBOX_WIN7_BUILD !== 'true') {
+    verifyVersionsMatchPnpmWorkspace(appDir)
+  }
 
   // Remove type-only packages that are not needed at runtime.
-  // @anthropic-ai/sandbox-runtime incorrectly lists @types/lodash-es
-  // in production dependencies, pulling in @types/* and undici-types.
   const packagesToRemove = ['@types', 'undici-types']
+  if (process.env.CHATBOX_WIN7_BUILD === 'true') {
+    packagesToRemove.push(
+      '@libsql',
+      'libsql',
+    )
+    console.log('[ensure-app-deps] Win7 build: removing native libsql packages')
+  }
   for (const pkg of packagesToRemove) {
     const pkgPath = path.join(nodeModulesDir, pkg)
     if (fs.existsSync(pkgPath)) {

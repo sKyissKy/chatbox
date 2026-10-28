@@ -11,11 +11,10 @@
   "main": "./dist/main/main.js",
   "scripts": {
     "rebuild": "node ../../.erb/scripts/electron-rebuild.cjs",
-    "postinstall": "pnpm run rebuild && node ../../.erb/scripts/patch-libsql.cjs"
+    "postinstall": "pnpm run rebuild"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "^0.0.54",
-    "@libsql/client": "^0.15.6"
+    "sql.js": "1.13.0"
   },
   "overrides": {
     "ws": "8.19.0",

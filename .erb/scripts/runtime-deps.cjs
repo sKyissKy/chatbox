@@ -3,7 +3,7 @@ const path = require('path')
 
 const unpackedRuntimePackages = [
   {
-    name: '@anthropic-ai/sandbox-runtime',
+    name: 'sql.js',
     includeDependencies: true,
   },
 ]

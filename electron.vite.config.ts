@@ -191,9 +191,10 @@ export default defineConfig(({ mode }) => {
           entry: resolve(__dirname, 'src/main/main.ts'),
         },
         sourcemap: isProduction ? 'hidden' : true,
+        target: 'node16',
         minify: isProduction,
         rollupOptions: {
-          external: Object.keys(packageJson.dependencies || {}),
+          external: [...Object.keys(packageJson.dependencies || {}), /^pdfjs-dist(?:\/|$)/, /^sql\.js(?:\/|$)/],
           output: {
             entryFileNames: '[name].js',
             inlineDynamicImports: true,
@@ -205,6 +206,7 @@ export default defineConfig(({ mode }) => {
           '@': path.resolve(__dirname, './src/renderer'),
           '@shared': path.resolve(__dirname, './src/shared'),
           'src/shared': path.resolve(__dirname, './src/shared'),
+          zod: path.resolve(__dirname, 'node_modules/zod'),
         },
       },
       define: {
@@ -213,6 +215,8 @@ export default defineConfig(({ mode }) => {
         'process.env.CHATBOX_BUILD_TARGET': JSON.stringify(process.env.CHATBOX_BUILD_TARGET || 'unknown'),
         'process.env.CHATBOX_BUILD_PLATFORM': JSON.stringify(process.env.CHATBOX_BUILD_PLATFORM || 'unknown'),
         'process.env.CHATBOX_BUILD_CHANNEL': JSON.stringify(process.env.CHATBOX_BUILD_CHANNEL || 'unknown'),
+        'process.env.CHATBOX_WIN7_BUILD': JSON.stringify(process.env.CHATBOX_WIN7_BUILD || ''),
+        'process.env.CHATBOX_WIN7_RAG': JSON.stringify(process.env.CHATBOX_WIN7_RAG || ''),
         'process.env.USE_LOCAL_API': JSON.stringify(process.env.USE_LOCAL_API || ''),
         'process.env.USE_BETA_API': JSON.stringify(process.env.USE_BETA_API || ''),
         'process.env.USE_NEWDB_API': JSON.stringify(process.env.USE_NEWDB_API || ''),
@@ -234,6 +238,7 @@ export default defineConfig(({ mode }) => {
           entry: resolve(__dirname, 'src/preload/index.ts'),
         },
         sourcemap: isProduction ? 'hidden' : true,
+        target: 'node16',
         minify: isProduction,
       },
       resolve: {
@@ -241,6 +246,7 @@ export default defineConfig(({ mode }) => {
           '@': path.resolve(__dirname, './src/renderer'),
           '@shared': path.resolve(__dirname, './src/shared'),
           'src/shared': path.resolve(__dirname, './src/shared'),
+          zod: path.resolve(__dirname, 'node_modules/zod'),
         },
       },
     },
@@ -249,6 +255,7 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, 'src/renderer'),
           '@shared': path.resolve(__dirname, 'src/shared'),
+          zod: path.resolve(__dirname, 'node_modules/zod'),
         },
       },
       plugins: [
@@ -288,7 +295,7 @@ export default defineConfig(({ mode }) => {
       ].filter(Boolean),
       build: {
         outDir: isProduction ? 'release/app/dist/renderer' : undefined,
-        target: 'es2020', // Avoid static initialization blocks for browser compatibility
+        target: 'chrome108',
         sourcemap: isProduction ? 'hidden' : true,
         minify: isProduction ? 'esbuild' : false, // Use esbuild for faster, less memory-intensive minification
         rollupOptions: {
@@ -350,6 +357,8 @@ export default defineConfig(({ mode }) => {
         'process.env.CHATBOX_BUILD_TARGET': JSON.stringify(process.env.CHATBOX_BUILD_TARGET || 'unknown'),
         'process.env.CHATBOX_BUILD_PLATFORM': JSON.stringify(process.env.CHATBOX_BUILD_PLATFORM || 'unknown'),
         'process.env.CHATBOX_BUILD_CHANNEL': JSON.stringify(process.env.CHATBOX_BUILD_CHANNEL || 'unknown'),
+        'process.env.CHATBOX_WIN7_BUILD': JSON.stringify(process.env.CHATBOX_WIN7_BUILD || ''),
+        'process.env.CHATBOX_WIN7_RAG': JSON.stringify(process.env.CHATBOX_WIN7_RAG || ''),
         'process.env.USE_LOCAL_API': JSON.stringify(process.env.USE_LOCAL_API || ''),
         'process.env.USE_BETA_API': JSON.stringify(process.env.USE_BETA_API || ''),
         'process.env.USE_NEWDB_API': JSON.stringify(process.env.USE_NEWDB_API || ''),
