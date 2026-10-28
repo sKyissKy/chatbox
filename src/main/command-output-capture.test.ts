@@ -37,7 +37,9 @@ describe('createCommandOutputCapture', () => {
       capture.append('stdout', stdout)
       capture.append('stderr', stderr)
       await expect(capture.finish()).resolves.toBe(outputPath)
-      expect(statSync(outputPath).mode & 0o777).toBe(0o600)
+      if (process.platform !== 'win32') {
+        expect(statSync(outputPath).mode & 0o777).toBe(0o600)
+      }
       const stored = readFileSync(outputPath)
       expect(stored.includes(stdout)).toBe(true)
       expect(stored.includes(stderr)).toBe(true)

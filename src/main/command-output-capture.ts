@@ -76,6 +76,7 @@ export function createCommandOutputCapture(outputFilePath: string): CommandOutpu
   const completion = new Promise<void>((resolve) => {
     stream.once('open', () => {
       opened = true
+      releaseBackpressure()
     })
     stream.once('error', () => {
       failed = true

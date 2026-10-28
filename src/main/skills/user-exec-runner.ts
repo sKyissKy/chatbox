@@ -14,7 +14,12 @@ import { killProcessTree } from '../process-tree'
 import { buildPowerShellStdinScript, buildSandboxStdinScript, stripCodesignNoise } from '../sandbox/exec-script'
 import { getLoginShellPathIfReady } from '../sandbox/login-shell-env'
 import { getLogger } from '../util'
-import { resolveWindowsPowerShell } from '../windows-powershell'
+import { augmentRuntimeEnvironment } from '../runtime-env'
+import {
+  prepareWindowsPowerShellInvocation,
+  resolveWindowsPowerShell,
+  stripClixmlNoise,
+} from '../windows-powershell'
 
 const log = getLogger('skills:user-exec')
 
@@ -129,31 +134,42 @@ export async function executeUserExecCommand(params: UserExecParams): Promise<Us
     )
 
     const isWindows = process.platform === 'win32'
-    const powershell = isWindows ? resolveWindowsPowerShell() : null
-    if (isWindows && !powershell) {
-      const result = {
-        success: false,
-        stdout: '',
-        stderr: 'PowerShell is not available on this Windows host.',
-        exitCode: null,
-        cwd,
-      }
-      log.warn(
-        buildOperationFinishLog({
-          operationId,
+    let powershellInvocation: ReturnType<typeof prepareWindowsPowerShellInvocation> | undefined
+    let shellCommand = 'bash'
+    let shellArgs: string[] = []
+
+    if (isWindows) {
+      const powershell = resolveWindowsPowerShell()
+      if (!powershell) {
+        const result = {
           success: false,
-          exitCode: null,
-          durationMs: Date.now() - startedAt,
           stdout: '',
-          stderr: result.stderr,
-        })
-      )
-      return result
+          stderr: 'PowerShell is not available on this Windows host.',
+          exitCode: null,
+          cwd,
+        }
+        log.warn(
+          buildOperationFinishLog({
+            operationId,
+            success: false,
+            exitCode: null,
+            durationMs: Date.now() - startedAt,
+            stdout: '',
+            stderr: result.stderr,
+          })
+        )
+        return result
+      }
+      const fullPsScript = buildPowerShellStdinScript(command, injectBundledNode ? process.execPath : undefined)
+      powershellInvocation = prepareWindowsPowerShellInvocation(fullPsScript, powershell)
+      shellCommand = powershellInvocation.cmd
+      shellArgs = powershellInvocation.args
+    } else {
+      const hostCommand =
+        injectBundledNode ? buildSandboxStdinScript(command, 'bash', process.execPath, true) : command
+      shellCommand = 'bash'
+      shellArgs = ['-lc', hostCommand]
     }
-    const shellCommand = powershell?.cmd ?? 'bash'
-    const hostCommand =
-      injectBundledNode && !isWindows ? buildSandboxStdinScript(command, 'bash', process.execPath, true) : command
-    const shellArgs = powershell?.args ?? ['-lc', hostCommand]
     const outputCapture = createCommandOutputCapture(createCommandOutputCapturePath(toolCallId))
 
     // GUI-launched Electron inherits launchd's minimal PATH; `bash -l` alone doesn't recover
@@ -161,7 +177,8 @@ export async function executeUserExecCommand(params: UserExecParams): Promise<Us
     // cached value synchronously: an await here would delay spawn and open a window in which
     // cancellation cannot find the child.
     const loginShellPath = getLoginShellPathIfReady()
-    const spawnEnv = loginShellPath ? { ...process.env, PATH: loginShellPath } : process.env
+    const initialEnv = loginShellPath ? { ...process.env, PATH: loginShellPath } : process.env
+    const spawnEnv = isWindows ? augmentRuntimeEnvironment(initialEnv) : initialEnv
 
     return await new Promise((resolve) => {
       let stdout = ''
@@ -191,9 +208,10 @@ export async function executeUserExecCommand(params: UserExecParams): Promise<Us
               : {}),
             ...(outputFile ? { outputFile } : {}),
           }
-          const finalResult = injectBundledNode
-            ? { ...capturedResult, stderr: stripCodesignNoise(capturedResult.stderr) }
-            : capturedResult
+          let finalStderr = capturedResult.stderr
+          if (injectBundledNode) finalStderr = stripCodesignNoise(finalStderr)
+          if (isWindows) finalStderr = stripClixmlNoise(finalStderr)
+          const finalResult = { ...capturedResult, stderr: finalStderr }
           const finishLog = buildOperationFinishLog({
             operationId,
             success: finalResult.success,
@@ -213,7 +231,7 @@ export async function executeUserExecCommand(params: UserExecParams): Promise<Us
 
       const child = spawn(shellCommand, shellArgs, {
         cwd,
-        stdio: [isWindows ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: spawnEnv,
         shell: false,
         // Keep the command in its own POSIX process group so cancellation also
@@ -241,19 +259,13 @@ export async function executeUserExecCommand(params: UserExecParams): Promise<Us
       }, timeoutMs)
 
       if (!child.stdout || !child.stderr) {
+        powershellInvocation?.cleanup?.()
         child.kill('SIGTERM')
         resolveOnce({ success: false, stdout: '', stderr: 'Command output streams are unavailable', exitCode: null })
         return
       }
       const stdoutStream = child.stdout
       const stderrStream = child.stderr
-
-      if (isWindows && child.stdin) {
-        child.stdin.on('error', () => {
-          // The process error/close handlers below own the final result.
-        })
-        child.stdin.end(buildPowerShellStdinScript(command, injectBundledNode ? process.execPath : undefined), 'utf8')
-      }
 
       stdoutStream.on('data', (data: Buffer) => {
         stdoutBytes += data.byteLength
@@ -284,11 +296,13 @@ export async function executeUserExecCommand(params: UserExecParams): Promise<Us
         if (remaining > 0) stderr += data.subarray(0, remaining).toString()
       })
       child.on('error', (error) => {
+        powershellInvocation?.cleanup?.()
         if (forceKillHandle) clearTimeout(forceKillHandle)
         log.error('skills:user-exec spawn error', error)
         resolveOnce({ success: false, stdout, stderr: stderr || error.message, exitCode: null })
       })
       child.on('close', (code, signal) => {
+        powershellInvocation?.cleanup?.()
         if (forceKillHandle) clearTimeout(forceKillHandle)
         resolveOnce(
           cancelled

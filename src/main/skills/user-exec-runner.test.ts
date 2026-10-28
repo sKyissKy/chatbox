@@ -15,7 +15,7 @@ const SUCCESS_RESULT: UserExecResult = { success: true, stdout: 'ok', stderr: ''
 describe('resolveUserExecCwd', () => {
   it('uses the same absolute cwd for approval previews and execution', () => {
     expect(resolveUserExecCwd({ cwd: 'packages/app', baseCwd: '/workspace/project' })).toBe(
-      '/workspace/project/packages/app'
+      path.resolve('/workspace/project', 'packages/app')
     )
   })
 })
