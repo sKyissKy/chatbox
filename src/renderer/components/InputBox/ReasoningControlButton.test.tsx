@@ -4,7 +4,8 @@ import { MantineProvider } from '@mantine/core'
 import { TestId } from '@shared/automation/testids'
 import { ModelProviderEnum, type ProviderModelInfo, type ProviderOptions } from '@shared/types'
 import { describe, expect, test, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@/test-utils'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import ReasoningControlButton from './ReasoningControlButton'
 
 Object.defineProperty(window, 'matchMedia', {
@@ -32,33 +33,37 @@ vi.mock('react-i18next', () => ({
 
 const model: ProviderModelInfo = { modelId: 'gpt-5.1' }
 
+function renderWithProviders(ui: React.ReactElement) {
+  return render(
+    <TooltipProvider>
+      <MantineProvider>{ui}</MantineProvider>
+    </TooltipProvider>
+  )
+}
+
 function renderButton(reasoningEffort: 'low' | 'medium' | 'high' = 'high') {
   const providerOptions: ProviderOptions = { openai: { reasoningEffort } }
-  return render(
-    <MantineProvider>
-      <ReasoningControlButton
-        provider={ModelProviderEnum.OpenAIResponses}
-        model={model}
-        providerOptions={providerOptions}
-        iconSize={22}
-        onChange={vi.fn()}
-      />
-    </MantineProvider>
+  return renderWithProviders(
+    <ReasoningControlButton
+      provider={ModelProviderEnum.OpenAIResponses}
+      model={model}
+      providerOptions={providerOptions}
+      iconSize={22}
+      onChange={vi.fn()}
+    />
   )
 }
 
 describe('ReasoningControlButton', () => {
   test('shows Astra thinking controls and lets the user choose high effort', async () => {
     const onChange = vi.fn()
-    render(
-      <MantineProvider>
-        <ReasoningControlButton
-          provider={ModelProviderEnum.OpenAIResponses}
-          model={{ modelId: 'gpt-6-astra' }}
-          iconSize={22}
-          onChange={onChange}
-        />
-      </MantineProvider>
+    renderWithProviders(
+      <ReasoningControlButton
+        provider={ModelProviderEnum.OpenAIResponses}
+        model={{ modelId: 'gpt-6-astra' }}
+        iconSize={22}
+        onChange={onChange}
+      />
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
@@ -101,15 +106,13 @@ describe('ReasoningControlButton', () => {
 
   test('supports reasoning control for Qwen models on the OpenAI interface', async () => {
     const onChange = vi.fn()
-    render(
-      <MantineProvider>
-        <ReasoningControlButton
-          provider={ModelProviderEnum.OpenAI}
-          model={{ modelId: 'qwen-plus' }}
-          iconSize={22}
-          onChange={onChange}
-        />
-      </MantineProvider>
+    renderWithProviders(
+      <ReasoningControlButton
+        provider={ModelProviderEnum.OpenAI}
+        model={{ modelId: 'qwen-plus' }}
+        iconSize={22}
+        onChange={onChange}
+      />
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
@@ -123,15 +126,13 @@ describe('ReasoningControlButton', () => {
 
   test('supports reasoning control for DeepSeek models on the OpenAI interface', async () => {
     const onChange = vi.fn()
-    render(
-      <MantineProvider>
-        <ReasoningControlButton
-          provider={ModelProviderEnum.OpenAI}
-          model={{ modelId: 'deepseek-r1' }}
-          iconSize={22}
-          onChange={onChange}
-        />
-      </MantineProvider>
+    renderWithProviders(
+      <ReasoningControlButton
+        provider={ModelProviderEnum.OpenAI}
+        model={{ modelId: 'deepseek-r1' }}
+        iconSize={22}
+        onChange={onChange}
+      />
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))

@@ -131,9 +131,9 @@ async function loadPdfjs() {
   // pdfjs checks before attempting the dynamic import.
   const globals = globalThis as { pdfjsWorker?: unknown }
   if (!globals.pdfjsWorker) {
-    globals.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.js')
+    globals.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
   }
-  return await import('pdfjs-dist/legacy/build/pdf.js')
+  return await import('pdfjs-dist/legacy/build/pdf.mjs')
 }
 
 /**
