@@ -76,14 +76,15 @@ $scipyPkg = Join-Path $pyDir "Lib\site-packages\scipy"
 if (-not (Test-Path $pyExe)) {
     Download-And-Extract -Url "https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip" -ZipName "python-3.8.10-embed-amd64.zip" -DestDir $pyDir
     
-    # Configure python38._pth
+    # Configure python38._pth (must be ASCII without UTF-8 BOM, otherwise Python embed fails to load encodings)
     $pth = Join-Path $pyDir "python38._pth"
-    @"
-python38.zip
-.
-Lib/site-packages
-import site
-"@ | Set-Content -Path $pth -Encoding utf8
+    "python38.zip`r`n.`r`nLib/site-packages`r`nimport site`r`n" | Set-Content -Path $pth -Encoding ascii
+    
+    # Verify Python runtime boots
+    & $pyExe -c "import sys; print('Python embed initialized:', sys.version)"
+    if ($LASTEXITCODE -ne 0) {
+        throw "[prepare-runtime-assets] Python failed to boot!"
+    }
 }
 
 if (-not (Test-Path $scipyPkg)) {
@@ -93,14 +94,21 @@ if (-not (Test-Path $scipyPkg)) {
         Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $pipPy -UseBasicParsing
     }
     & $pyExe $pipPy --no-warn-script-location
+    if ($LASTEXITCODE -ne 0) {
+        throw "[prepare-runtime-assets] Failed to execute get-pip.py!"
+    }
     $pipExe = Join-Path $pyDir "Scripts\pip.exe"
-    if (Test-Path $pipExe) {
-        Write-Host "[prepare-runtime-assets] Installing full Python suite (24 packages: numpy, scipy, pandas, matplotlib, seaborn, scikit-learn, statsmodels, openpyxl, xlsxwriter, python-docx, python-pptx, pypdf, pdfplumber, reportlab, pillow, qrcode, imageio, pefile, pycryptodome, requests, beautifulsoup4, lxml, pyyaml, tqdm)..." -ForegroundColor Cyan
-        & $pipExe install numpy scipy pandas matplotlib seaborn scikit-learn statsmodels openpyxl xlsxwriter python-docx python-pptx pypdf pdfplumber reportlab pillow qrcode imageio pefile pycryptodome requests beautifulsoup4 lxml pyyaml tqdm --no-warn-script-location
+    if (-not (Test-Path $pipExe)) {
+        throw "[prepare-runtime-assets] pip.exe not found at $pipExe after get-pip.py!"
+    }
+    Write-Host "[prepare-runtime-assets] Installing full Python suite (24 packages: numpy, scipy, pandas, matplotlib, seaborn, scikit-learn, statsmodels, openpyxl, xlsxwriter, python-docx, python-pptx, pypdf, pdfplumber, reportlab, pillow, qrcode, imageio, pefile, pycryptodome, requests, beautifulsoup4, lxml, pyyaml, tqdm)..." -ForegroundColor Cyan
+    & $pipExe install numpy scipy pandas matplotlib seaborn scikit-learn statsmodels openpyxl xlsxwriter python-docx python-pptx pypdf pdfplumber reportlab pillow qrcode imageio pefile pycryptodome requests beautifulsoup4 lxml pyyaml tqdm --no-warn-script-location
+    if ($LASTEXITCODE -ne 0) {
+        throw "[prepare-runtime-assets] pip install packages failed!"
     }
 }
 
-# 2. Node.js 16.20.2 + full offline Node.js toolchain
+# 2. Node.js 16.20.2 + full offline Node.js toolchain (pinned for Node 16 / Win7 compatibility)
 $nodeDir = Join-Path $targetRuntimeDir "node"
 $wsPkg = Join-Path $nodeDir "node_modules\ws"
 if (-not (Test-Path $nodeExe)) {
@@ -110,8 +118,11 @@ if (-not (Test-Path $nodeExe)) {
 if (-not (Test-Path $wsPkg)) {
     $npmCmd = Join-Path $nodeDir "npm.cmd"
     if (Test-Path $npmCmd) {
-        Write-Host "[prepare-runtime-assets] Installing full offline Node.js toolchain (playwright, xlsx, tsx, cheerio, axios, pdf-parse, adm-zip, glob, ws, chrome-remote-interface)..." -ForegroundColor Cyan
-        & $npmCmd install playwright-core xlsx tsx cheerio axios pdf-parse adm-zip glob ws chrome-remote-interface --prefix $nodeDir --no-audit --no-fund
+        Write-Host "[prepare-runtime-assets] Installing full offline Node.js toolchain for Node 16 (playwright-core@1.35.1, xlsx@0.18.5, tsx@3.14.0, cheerio@1.0.0-rc.12, axios@1.6.8, pdf-parse@1.1.1, adm-zip@0.5.10, glob@10.4.5, ws@8.14.2, chrome-remote-interface@0.32.1)..." -ForegroundColor Cyan
+        & $npmCmd install playwright-core@1.35.1 xlsx@0.18.5 tsx@3.14.0 cheerio@1.0.0-rc.12 axios@1.6.8 pdf-parse@1.1.1 adm-zip@0.5.10 glob@10.4.5 ws@8.14.2 chrome-remote-interface@0.32.1 --prefix $nodeDir --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) {
+            throw "[prepare-runtime-assets] npm install packages failed!"
+        }
     }
 }
 
@@ -142,5 +153,19 @@ if (-not (Test-Path $binExe)) {
 
 # Clean downloads cache
 Remove-Item -Path $downloadsDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# Final verification
+$missing = @()
+if (-not (Test-Path $pyExe)) { $missing += "python.exe" }
+if (-not (Test-Path $scipyPkg)) { $missing += "scipy in python site-packages" }
+if (-not (Test-Path $nodeExe)) { $missing += "node.exe" }
+if (-not (Test-Path $wsPkg)) { $missing += "ws in node_modules" }
+if (-not (Test-Path $browserExe)) { $missing += "chrome.exe" }
+if (-not (Test-Path $gitExe)) { $missing += "git.exe" }
+if (-not (Test-Path $binExe)) { $missing += "ffmpeg.exe" }
+
+if ($missing.Count -gt 0) {
+    throw "[prepare-runtime-assets] Fatal: The following required components were not installed properly: $($missing -join ', ')"
+}
 
 Write-Host "[prepare-runtime-assets] Win7 runtime assets setup completed successfully!" -ForegroundColor Green
