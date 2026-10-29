@@ -47,17 +47,7 @@ jobs:
           node-version: 22.13.0
           cache: 'pnpm'
 
-      - name: Cache Win7 Runtime Assets
-        id: cache-runtime-assets
-        uses: actions/cache@v4
-        with:
-          path: ../runtime-assets
-          key: win7-runtime-assets-v2-${{ hashFiles('.erb/scripts/prepare-win7-runtime-assets.ps1') }}
-          restore-keys: |
-            win7-runtime-assets-v2-
-
       - name: Prepare Win7 Runtime Assets
-        if: steps.cache-runtime-assets.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           powershell -ExecutionPolicy Bypass -File .\.erb\scripts\prepare-win7-runtime-assets.ps1
@@ -81,39 +71,14 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
         run: pnpm run build:win7-debug
 
-      - name: Compress Win7 Installers with 7z (Ultra LZMA2)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "release\7z"
-          Get-ChildItem -Path "release" -Filter "*.exe" | ForEach-Object {
-            Write-Host "Compressing $($_.Name) with 7z (Ultra LZMA2)..."
-            & 7z a -t7z -m0=lzma2 -mx=9 -ms=on "release\7z\$($_.Name).7z" $_.FullName
-          }
-          Get-ChildItem -Path "release\7z" | Select-Object Name, Length
-
-      - name: Upload Win7 Release Installer (.exe.7z)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Chatbox-Win7-x64-Release-exe-7z
-          path: release/7z/*Win7-x64-Setup.exe.7z
-          if-no-files-found: error
-
-      - name: Upload Win7 Debug Installer (.exe.7z)
-        if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
-        uses: actions/upload-artifact@v4
-        with:
-          name: Chatbox-Win7-x64-Debug-exe-7z
-          path: release/7z/*Win7-x64-Debug-Setup.exe.7z
-          if-no-files-found: error
-
-      - name: Upload Win7 Release Installer (direct .exe)
+      - name: Upload Win7 Release Installer (.exe)
         uses: actions/upload-artifact@v4
         with:
           name: Chatbox-Win7-x64-Release-exe
           path: release/*Win7-x64-Setup.exe
           if-no-files-found: error
 
-      - name: Upload Win7 Debug Installer (direct .exe)
+      - name: Upload Win7 Debug Installer (.exe)
         if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
         uses: actions/upload-artifact@v4
         with:

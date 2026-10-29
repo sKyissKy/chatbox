@@ -22,8 +22,10 @@ $nodeExe = Join-Path $targetRuntimeDir "node\node.exe"
 $gitExe = Join-Path $targetRuntimeDir "git\cmd\git.exe"
 $browserExe = Join-Path $targetRuntimeDir "browser\chrome.exe"
 $binExe = Join-Path $targetRuntimeDir "bin\ffmpeg.exe"
+$scipyPkg = Join-Path $targetRuntimeDir "python\Lib\site-packages\scipy"
+$wsPkg = Join-Path $targetRuntimeDir "node\node_modules\ws"
 
-if ((Test-Path $pyExe) -and (Test-Path $nodeExe) -and (Test-Path $gitExe) -and (Test-Path $browserExe) -and (Test-Path $binExe)) {
+if ((Test-Path $pyExe) -and (Test-Path $nodeExe) -and (Test-Path $gitExe) -and (Test-Path $browserExe) -and (Test-Path $binExe) -and (Test-Path $scipyPkg) -and (Test-Path $wsPkg)) {
     Write-Host "[prepare-runtime-assets] All required runtime assets are already present at $targetRuntimeDir" -ForegroundColor Green
     exit 0
 }
@@ -69,8 +71,9 @@ function Download-And-Extract {
 }
 
 # 1. Python 3.8.10 Embed
+$pyDir = Join-Path $targetRuntimeDir "python"
+$scipyPkg = Join-Path $pyDir "Lib\site-packages\scipy"
 if (-not (Test-Path $pyExe)) {
-    $pyDir = Join-Path $targetRuntimeDir "python"
     Download-And-Extract -Url "https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip" -ZipName "python-3.8.10-embed-amd64.zip" -DestDir $pyDir
     
     # Configure python38._pth
@@ -81,7 +84,9 @@ python38.zip
 Lib/site-packages
 import site
 "@ | Set-Content -Path $pth -Encoding utf8
+}
 
+if (-not (Test-Path $scipyPkg)) {
     # Install pip and comprehensive data analysis, science, office, ML and multimedia packages
     $pipPy = Join-Path $downloadsDir "get-pip.py"
     if (-not (Test-Path $pipPy)) {
@@ -96,9 +101,13 @@ import site
 }
 
 # 2. Node.js 16.20.2 + full offline Node.js toolchain
+$nodeDir = Join-Path $targetRuntimeDir "node"
+$wsPkg = Join-Path $nodeDir "node_modules\ws"
 if (-not (Test-Path $nodeExe)) {
-    $nodeDir = Join-Path $targetRuntimeDir "node"
     Download-And-Extract -Url "https://nodejs.org/dist/v16.20.2/node-v16.20.2-win-x64.zip" -ZipName "node-v16.20.2-win-x64.zip" -DestDir $nodeDir -SubFolderToExtract "node-v16.20.2-win-x64"
+}
+
+if (-not (Test-Path $wsPkg)) {
     $npmCmd = Join-Path $nodeDir "npm.cmd"
     if (Test-Path $npmCmd) {
         Write-Host "[prepare-runtime-assets] Installing full offline Node.js toolchain (playwright, xlsx, tsx, cheerio, axios, pdf-parse, adm-zip, glob, ws, chrome-remote-interface)..." -ForegroundColor Cyan
