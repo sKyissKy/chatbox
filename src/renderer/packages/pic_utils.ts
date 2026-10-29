@@ -87,7 +87,7 @@ export async function getImageBase64AndResize(file: File, options: ImageResizeOp
 }
 
 export async function renderPdfPagesToPngBase64(file: File): Promise<string[]> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js')
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const data = new Uint8Array(await file.arrayBuffer())
   const loadingTask = pdfjs.getDocument({
     data,

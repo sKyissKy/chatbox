@@ -4,7 +4,7 @@ import {
   LOCAL_PARSER_MAX_PDF_FILE_SIZE,
   LOCAL_PARSER_PDF_PASSWORD_PROTECTED_ERROR,
 } from '@shared/file-parse-errors'
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.js?url'
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url'
 
 type PdfTextItem = {
   str: string
@@ -28,7 +28,7 @@ function isPdfTextItem(item: unknown): item is PdfTextItem {
 }
 
 async function loadPdfjs() {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js')
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
   return pdfjs
 }
