@@ -54,22 +54,20 @@ function run(cmd, options = {}) {
   execSync(cmd, { stdio: 'inherit', ...options })
 }
 
-function hasPythonPackage(pkgName) {
-  const libDir = path.join(pythonDir, 'lib')
-  if (!fs.existsSync(libDir)) return false
-  try {
-    const pyDirs = fs.readdirSync(libDir).filter((d) => d.startsWith('python3.'))
-    for (const d of pyDirs) {
-      const pkgPath = path.join(libDir, d, 'site-packages', pkgName)
-      if (fs.existsSync(pkgPath)) return true
-    }
-  } catch {}
-  return false
-}
+const pyExpectedPackages = [
+  'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn', 'scikit-learn',
+  'statsmodels', 'openpyxl', 'xlsxwriter', 'python-docx', 'python-pptx',
+  'pypdf', 'pdfplumber', 'reportlab', 'pillow', 'qrcode', 'imageio',
+  'pefile', 'pycryptodome', 'requests', 'beautifulsoup4', 'lxml', 'pyyaml', 'tqdm'
+]
+
+const nodeExpectedPackages = [
+  'playwright-core', 'xlsx', 'tsx', 'cheerio', 'axios',
+  'pdf-parse', 'adm-zip', 'glob', 'ws', 'chrome-remote-interface'
+]
 
 const nodeExe = path.join(nodeDir, 'bin', 'node')
 const pyExe = path.join(pythonDir, 'bin', 'python3')
-const wsPkg = path.join(nodeDir, 'node_modules', 'ws')
 const rgDest = path.join(binDir, 'rg')
 const ffmpegDest = path.join(binDir, 'ffmpeg')
 const ffprobeDest = path.join(binDir, 'ffprobe')
@@ -81,16 +79,37 @@ const browserCandidates = [
 ]
 const hasBrowser = () => browserCandidates.some((c) => fs.existsSync(c))
 
+function getMissingPythonPackages() {
+  if (!fs.existsSync(pyExe)) return [...pyExpectedPackages]
+  const pyCheckCode = `import importlib.util; mods = {'numpy':'numpy','scipy':'scipy','pandas':'pandas','matplotlib':'matplotlib','seaborn':'seaborn','scikit-learn':'sklearn','statsmodels':'statsmodels','openpyxl':'openpyxl','xlsxwriter':'xlsxwriter','python-docx':'docx','python-pptx':'pptx','pypdf':'pypdf','pdfplumber':'pdfplumber','reportlab':'reportlab','pillow':'PIL','qrcode':'qrcode','imageio':'imageio','pefile':'pefile','pycryptodome':'Crypto','requests':'requests','beautifulsoup4':'bs4','lxml':'lxml','pyyaml':'yaml','tqdm':'tqdm'}; missing = [p for p, m in mods.items() if not importlib.util.find_spec(m)]; print(' '.join(missing))`
+  try {
+    const res = execSync(`"${pyExe}" -c "${pyCheckCode}"`, { encoding: 'utf-8' }).trim()
+    if (!res) return []
+    return res.split(/\\s+/).filter(Boolean)
+  } catch {
+    return [...pyExpectedPackages]
+  }
+}
+
+function getMissingNodePackages() {
+  const nmDir = path.join(nodeDir, 'node_modules')
+  if (!fs.existsSync(nmDir)) return [...nodeExpectedPackages]
+  return nodeExpectedPackages.filter((pkg) => !fs.existsSync(path.join(nmDir, pkg)))
+}
+
+const initialMissingPy = getMissingPythonPackages()
+const initialMissingNode = getMissingNodePackages()
+
 if (
   fs.existsSync(nodeExe) &&
-  fs.existsSync(wsPkg) &&
+  initialMissingNode.length === 0 &&
   fs.existsSync(pyExe) &&
-  hasPythonPackage('scipy') &&
+  initialMissingPy.length === 0 &&
   hasBrowser() &&
   fs.existsSync(rgDest) &&
   fs.existsSync(ffmpegDest)
 ) {
-  console.log('[prepare-linux-runtime] All required runtime assets and packages are already present.')
+  console.log('[prepare-linux-runtime] All required runtime assets (24 Python packages, 10 Node packages, Chromium 90, and static binaries) are verified present.')
   process.exit(0)
 }
 
@@ -185,22 +204,11 @@ if (!fs.existsSync(nodeExe)) {
   }
 }
 
-if (fs.existsSync(nodeExe) && !fs.existsSync(wsPkg)) {
-  console.log('[prepare-linux-runtime] Installing full offline Node.js toolchain (playwright, xlsx, tsx, cheerio, axios, pdf-parse, adm-zip, glob, ws, chrome-remote-interface)...')
-  const nodePackages = [
-    'playwright-core',
-    'xlsx',
-    'tsx',
-    'cheerio',
-    'axios',
-    'pdf-parse',
-    'adm-zip',
-    'glob',
-    'ws',
-    'chrome-remote-interface',
-  ]
+const missingNodePackages = getMissingNodePackages()
+if (fs.existsSync(nodeExe) && missingNodePackages.length > 0) {
+  console.log(`[prepare-linux-runtime] Incrementally installing missing Node packages (${missingNodePackages.join(', ')})...`)
   try {
-    run(`"${nodeExe}" "${path.join(nodeDir, 'bin', 'npm')}" install ${nodePackages.join(' ')} --prefix "${nodeDir}" --no-audit --no-fund`)
+    run(`"${nodeExe}" "${path.join(nodeDir, 'bin', 'npm')}" install ${missingNodePackages.join(' ')} --prefix "${nodeDir}" --no-audit --no-fund`)
   } catch (err) {
     console.error(`[prepare-linux-runtime] Failed to install Node packages: ${err.message}`)
   }
@@ -226,36 +234,11 @@ if (!fs.existsSync(pyExe)) {
   }
 }
 
-if (fs.existsSync(pyExe) && !hasPythonPackage('scipy')) {
-  console.log('[prepare-linux-runtime] Installing full scientific, ML, office & multimedia suite into portable Python (24 packages)...')
-  const pyPackages = [
-    'numpy',
-    'scipy',
-    'pandas',
-    'matplotlib',
-    'seaborn',
-    'scikit-learn',
-    'statsmodels',
-    'openpyxl',
-    'xlsxwriter',
-    'python-docx',
-    'python-pptx',
-    'pypdf',
-    'pdfplumber',
-    'reportlab',
-    'pillow',
-    'qrcode',
-    'imageio',
-    'pefile',
-    'pycryptodome',
-    'requests',
-    'beautifulsoup4',
-    'lxml',
-    'pyyaml',
-    'tqdm',
-  ]
+const missingPyPackages = getMissingPythonPackages()
+if (fs.existsSync(pyExe) && missingPyPackages.length > 0) {
+  console.log(`[prepare-linux-runtime] Incrementally installing missing Python packages (${missingPyPackages.join(', ')})...`)
   try {
-    run(`"${pyExe}" -m pip install ${pyPackages.join(' ')} --no-warn-script-location`)
+    run(`"${pyExe}" -m pip install ${missingPyPackages.join(' ')} --no-warn-script-location`)
   } catch (err) {
     console.error(`[prepare-linux-runtime] Failed to install Python packages: ${err.message}`)
   }
@@ -349,17 +332,21 @@ if (!hasBrowser()) {
 }
 
 // Final runtime integrity verification
-if (!hasBrowser()) {
-  console.error('[prepare-linux-runtime] Fatal: Chromium binary is missing!')
-  process.exit(1)
-}
-if (!hasPythonPackage('scipy')) {
-  console.error('[prepare-linux-runtime] Fatal: Python packages (scipy) are missing!')
-  process.exit(1)
-}
-if (!fs.existsSync(wsPkg)) {
-  console.error('[prepare-linux-runtime] Fatal: Node packages (ws) are missing!')
+const finalMissingPy = getMissingPythonPackages()
+const finalMissingNode = getMissingNodePackages()
+
+const missing = []
+if (!fs.existsSync(pyExe)) missing.push('python3 executable')
+if (finalMissingPy.length > 0) missing.push(`Python packages: ${finalMissingPy.join(', ')}`)
+if (!fs.existsSync(nodeExe)) missing.push('node executable')
+if (finalMissingNode.length > 0) missing.push(`Node packages: ${finalMissingNode.join(', ')}`)
+if (!hasBrowser()) missing.push('Chromium browser binary')
+if (!fs.existsSync(rgDest)) missing.push('ripgrep binary')
+if (!fs.existsSync(ffmpegDest)) missing.push('ffmpeg binary')
+
+if (missing.length > 0) {
+  console.error(`[prepare-linux-runtime] Fatal: The following required components were not installed properly: ${missing.join('; ')}`)
   process.exit(1)
 }
 
-console.log('[prepare-linux-runtime] Offline workstation runtime assets setup completed successfully!')
+console.log('[prepare-linux-runtime] All 24 Python packages, 10 Node packages, Chromium 90, and binaries verified successfully!')
