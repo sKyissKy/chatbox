@@ -79,6 +79,10 @@ export interface BuildToolsOptions {
   agentToolContractVersion?: 1 | 2
   onAgentModeActivated?: () => void
   /**
+   * Context window in tokens, if known. Used to enable compact skill instructions for small context models.
+   */
+  contextWindow?: number
+  /**
    * Settings snapshot from the generation request. Keeps tool registration and
    * prompt assembly on the same view of memoryEnabled/language within one
    * request; falls back to the live store for callers without one.
@@ -183,7 +187,8 @@ function buildSkillToolsInstruction(
   legacyCommandTools: boolean,
   harmonyNodeExecution: boolean,
   sandboxCodeExecutionFallback: boolean,
-  skillStagingDirectory: string | null
+  skillStagingDirectory: string | null,
+  isSmallContext = false
 ): string {
   let instruction = `
 ## Skills
@@ -191,13 +196,27 @@ You have access to skills that can extend your capabilities.
 `
 
   if (enabledSkills.length > 0) {
-    instruction += `
+    if (isSmallContext) {
+      const compactList = enabledSkills
+        .map((s) => {
+          const cleanDesc = s.description.replace(/\r?\n/g, ' ').trim()
+          const firstSentence = cleanDesc.split(/[。\n.]/)[0].trim().slice(0, 70)
+          return `- **${s.name}**: ${firstSentence}`
+        })
+        .join('\n')
+      instruction += `
+### Available Skills (call load_skill to load full instructions before use)
+${compactList}
+`
+    } else {
+      instruction += `
 ### Available Skills
 ${enabledSkills.map((s) => `- **${s.name}**: ${s.description}`).join('\n')}
 
 When the user's request matches a skill's purpose, call load_skill to load its full instructions before proceeding.
 Loading a skill activates agent mode.
 `
+    }
   } else {
     instruction += `
 No skills are currently enabled.
@@ -266,14 +285,39 @@ The skill will be auto-enabled after installation.
   return instruction
 }
 
+export const MAX_USER_EXEC_STDOUT_CHARS = 8_000
+export const MAX_USER_EXEC_STDERR_CHARS = 4_000
+export const MAX_LOAD_SKILL_INSTRUCTION_CHARS = 10_000
+
+function clampOutputText(text: string, maxChars: number, outputFile?: string): string {
+  if (!text || text.length <= maxChars) {
+    return text
+  }
+  const headChars = Math.floor(maxChars * 0.4)
+  const tailChars = Math.floor(maxChars * 0.5)
+  const truncatedChars = text.length - headChars - tailChars
+
+  const hint = outputFile
+    ? `\n\n[... Truncated ${truncatedChars} characters to protect context. Full output captured in ${outputFile} ...]\n\n`
+    : `\n\n[... Truncated ${truncatedChars} characters to protect context ...]\n\n`
+
+  return `${text.slice(0, headChars)}${hint}${text.slice(-tailChars)}`
+}
+
 function formatLoadSkillOutput(output: unknown): string {
   const record = asRecord(output)
   const error = stringField(record, 'error')
   if (error) return `Error: ${error}`
-  const instructions = stringField(record, 'instructions') ?? JSON.stringify(output) ?? String(output)
+  let instructions = stringField(record, 'instructions') ?? JSON.stringify(output) ?? String(output)
   const skillRoot = stringField(record, 'skillRoot')
   const filesValue = record?.files
   const files = Array.isArray(filesValue) ? filesValue.filter((file): file is string => typeof file === 'string') : []
+
+  if (instructions.length > MAX_LOAD_SKILL_INSTRUCTION_CHARS) {
+    const head = instructions.slice(0, Math.floor(MAX_LOAD_SKILL_INSTRUCTION_CHARS * 0.8))
+    const truncatedChars = instructions.length - head.length
+    instructions = `${head}\n\n[... Truncated ${truncatedChars} characters of skill instructions to save context. Use read_file on skillRoot files for detailed documentation ...]`
+  }
 
   const sections = [instructions]
   if (skillRoot) {
@@ -301,9 +345,13 @@ function formatUserExecOutput(output: unknown): string {
   const stderr = stringField(record, 'stderr') ?? ''
   const outputFile = stringField(record, 'outputFile')
   const exitCode = numberField(record, 'exitCode')
+
+  const clampedStdout = clampOutputText(stdout, MAX_USER_EXEC_STDOUT_CHARS, outputFile)
+  const clampedStderr = clampOutputText(stderr, MAX_USER_EXEC_STDERR_CHARS, outputFile)
+
   const sections = [`Exit code: ${exitCode ?? 'unknown'}`]
-  if (stdout) sections.push(`Stdout:\n${stdout}`)
-  if (stderr) sections.push(`Stderr:\n${stderr}`)
+  if (clampedStdout) sections.push(`Stdout:\n${clampedStdout}`)
+  if (clampedStderr) sections.push(`Stderr:\n${clampedStderr}`)
   if (!stdout && !stderr) sections.push('(no output)')
   if (outputFile) sections.push(`Output capture: ${outputFile}`)
   return sections.join('\n\n')
@@ -563,6 +611,7 @@ When you create a Git commit that includes code changes, append this exact trail
     const skillSettings = settingsStore.getState().getSettings().skills
     const enabledSkills = allSkills.filter((s) => skillSettings.enabledSkillNames.includes(s.name))
     const userExecWorkingDirectory = options.sessionSettings?.workingDirectories?.find((dir) => dir.trim().length > 0)
+    const isSmallContext = Boolean(options.contextWindow && options.contextWindow <= 64_000)
     instructions += buildSkillToolsInstruction(
       enabledSkills,
       commandApprovalMode === 'full_access',
@@ -570,7 +619,8 @@ When you create a Git commit that includes code changes, append this exact trail
       legacyCommandTools,
       harmonyNodeExecution,
       sandboxCodeExecutionFallback,
-      sandboxWorkingDirectory
+      sandboxWorkingDirectory,
+      isSmallContext
     )
     tools.load_skill = buildLoadSkillTool(options)
     if (enabledSkills.some((skill) => skill.name === 'chatbox-product-info')) {

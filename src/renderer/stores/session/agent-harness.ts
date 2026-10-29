@@ -38,7 +38,11 @@ import {
   hasAcceptedCallbackBackgroundTask,
   hasAcceptedCallbackBackgroundTaskResult,
 } from '@/packages/chatbox-cli/background-task-result'
-import { assessContextPressure, getConfiguredContextWindow } from '@/packages/context-management/context-pressure'
+import {
+  assessContextPressure,
+  getConfiguredContextWindow,
+  getConfiguredMaxOutput,
+} from '@/packages/context-management/context-pressure'
 import {
   buildModelSystemPrompt,
   convertToModelMessages,
@@ -287,6 +291,9 @@ export async function prepareAgentGenerationHarness(
     targetMsgIx,
     preserveLastPromptMessageToolCalls
   )
+  const configuredContextWindow = getConfiguredContextWindow(globalSettings, settings.provider, model.modelId)
+  const configuredMaxOutput = getConfiguredMaxOutput(globalSettings, settings.provider, model.modelId)
+
   // Pressure is measured on the un-relieved context selection: below the
   // relief threshold history rides along untouched; above it, old tool
   // results are stubbed (calls stay). Full compaction is handled separately
@@ -298,7 +305,8 @@ export async function prepareAgentGenerationHarness(
     }),
     providerId: settings.provider,
     modelId: model.modelId,
-    contextWindow: getConfiguredContextWindow(globalSettings, settings.provider, model.modelId),
+    contextWindow: configuredContextWindow,
+    maxOutput: configuredMaxOutput,
     compactionThreshold: globalSettings.compactionThreshold,
     sandboxMode: canExecuteCode,
   })
@@ -384,6 +392,7 @@ export async function prepareAgentGenerationHarness(
     workspaceInstructionsOverride: promptContextSnapshot?.workspaceInstructions,
     globalSettings,
     memoryScope,
+    contextWindow: configuredContextWindow,
   })
   const hasTools = Object.keys(tools).length > 0
   // A request that declares no tools must not carry tool wire blocks: providers

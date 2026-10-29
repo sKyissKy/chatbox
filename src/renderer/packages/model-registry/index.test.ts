@@ -46,4 +46,27 @@ describe('provider-aware model-registry lookups', () => {
     expect(getProviderModelContextWindowSync('openai', 'gpt-4o:ft-team')).toBe(400_000)
     expect(getProviderModelContextWindowSync('github-copilot', 'gpt-4o:ft-team')).toBe(128_000)
   })
+
+  it('preserves user customized contextWindow and maxOutput while enriching empty fields', async () => {
+    const { enrichModelsFromRegistry } = await import('./index')
+
+    const models = [
+      {
+        modelId: 'gpt-4o',
+        type: 'chat' as const,
+        contextWindow: 32_000,
+        maxOutput: 2_048,
+      },
+      {
+        modelId: 'gpt-4o',
+        type: 'chat' as const,
+      },
+    ]
+
+    const enriched = enrichModelsFromRegistry(models, 'openai')
+    expect(enriched[0].contextWindow).toBe(32_000)
+    expect(enriched[0].maxOutput).toBe(2_048)
+    expect(enriched[1].contextWindow).toBe(400_000)
+    expect(enriched[1].maxOutput).toBe(128_000)
+  })
 })

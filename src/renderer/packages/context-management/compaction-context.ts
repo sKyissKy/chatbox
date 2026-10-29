@@ -1,6 +1,6 @@
 import { prepareContextMessages } from '@shared/context'
 import type { Message, Session, SessionSettings, Settings } from '@shared/types'
-import { assessContextPressure, getConfiguredContextWindow } from './context-pressure'
+import { assessContextPressure, getConfiguredContextWindow, getConfiguredMaxOutput } from './context-pressure'
 
 /** Select the send window and apply its pressure-driven tool-result cleanup. */
 export function getCompactionContext(
@@ -25,6 +25,7 @@ export function getCompactionContext(
         providerId,
         modelId,
         contextWindow: getConfiguredContextWindow(globalSettings, providerId, modelId),
+        maxOutput: getConfiguredMaxOutput(globalSettings, providerId, modelId),
         compactionThreshold: globalSettings.compactionThreshold,
       }).toolCleanupMode,
   }).filter((message) => message.id !== currentInput.id)

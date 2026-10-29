@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  calculateDynamicOutputReserve,
   checkOverflow,
   DEFAULT_COMPACTION_THRESHOLD,
   FALLBACK_CONTEXT_WINDOW_TOKENS,
@@ -333,6 +334,27 @@ describe('compaction-detector', () => {
 
       const result = getCompactionThresholdTokens('unknown-model', undefined, providedContextWindow)
       expect(result).toBe(expectedThreshold)
+    })
+  })
+
+  describe('calculateDynamicOutputReserve', () => {
+    it('returns default OUTPUT_RESERVE_TOKENS when maxOutput is omitted', () => {
+      expect(calculateDynamicOutputReserve(128_000)).toBe(32_000)
+      expect(calculateDynamicOutputReserve(32_000)).toBe(32_000)
+    })
+
+    it('dynamically adapts reserve to maxOutput when specified', () => {
+      // Small 32k model with 4k output: reserve is 4k (within 25% of 32k = 8k)
+      expect(calculateDynamicOutputReserve(32_768, 4_096)).toBe(4_096)
+      // 64k model with 8k output: reserve is 8k (within 25% of 64k = 16k)
+      expect(calculateDynamicOutputReserve(64_000, 8_192)).toBe(8_192)
+    })
+
+    it('clamps output reserve between minimum 2048 and maximum 25% of contextWindow', () => {
+      // 32k model requesting tiny 500 tokens: clamped to 2048 floor
+      expect(calculateDynamicOutputReserve(32_000, 500)).toBe(2_048)
+      // 16k model requesting 8000 tokens: clamped to 25% of 16k = 4000
+      expect(calculateDynamicOutputReserve(16_000, 8_000)).toBe(4_000)
     })
   })
 

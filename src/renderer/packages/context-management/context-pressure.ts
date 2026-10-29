@@ -1,6 +1,11 @@
 import type { ToolCleanupMode } from '@shared/context'
 import type { Message, Settings } from '@shared/types'
 import { sumCachedTokensFromMessages } from '../token'
+import {
+  getModelContextWindowSync,
+  getProviderModelContextWindowSync,
+  getProviderModelMaxOutputSync,
+} from '../model-registry'
 import { getCompactionThresholdTokens } from './compaction-detector'
 
 /**
@@ -17,6 +22,8 @@ export interface AssessContextPressureOptions {
   modelId?: string
   /** Explicit per-model context window from provider settings, when configured. */
   contextWindow?: number
+  /** Explicit per-model max output tokens, when configured. */
+  maxOutput?: number
   compactionThreshold?: Settings['compactionThreshold']
   sandboxMode?: boolean
 }
@@ -41,12 +48,12 @@ export interface ContextPressureAssessment {
  * stubbed while the calls stay.
  */
 export function assessContextPressure(options: AssessContextPressureOptions): ContextPressureAssessment {
-  const { contextMessages, providerId, modelId, contextWindow, compactionThreshold, sandboxMode = false } = options
+  const { contextMessages, providerId, modelId, contextWindow, maxOutput, compactionThreshold, sandboxMode = false } = options
 
   const tokenModel = providerId && modelId ? { provider: providerId, modelId } : undefined
   const contextTokens = sumCachedTokensFromMessages(contextMessages, tokenModel, sandboxMode)
 
-  const thresholdTokens = modelId ? getCompactionThresholdTokens(modelId, { compactionThreshold }, contextWindow) : null
+  const thresholdTokens = modelId ? getCompactionThresholdTokens(modelId, { compactionThreshold }, contextWindow, maxOutput) : null
 
   const stubActive =
     thresholdTokens !== null && contextTokens >= Math.floor(thresholdTokens * TOOL_RESULT_STUB_PRESSURE_RATIO)
@@ -58,12 +65,30 @@ export function assessContextPressure(options: AssessContextPressureOptions): Co
   }
 }
 
-/** Resolve a model's configured context window from provider settings, if any. */
+/** Resolve a model's configured context window from provider settings or registry, if any. */
 export function getConfiguredContextWindow(
   settings: Pick<Settings, 'providers'>,
   providerId: string | undefined,
   modelId: string | undefined
 ): number | undefined {
   if (!providerId || !modelId) return undefined
-  return settings.providers?.[providerId]?.models?.find((model) => model.modelId === modelId)?.contextWindow
+  const fromSettings = settings.providers?.[providerId]?.models?.find((model) => model.modelId === modelId)?.contextWindow
+  if (fromSettings && fromSettings > 0) return fromSettings
+  const providerSync = typeof getProviderModelContextWindowSync === 'function' ? getProviderModelContextWindowSync(providerId, modelId) : null
+  if (providerSync && providerSync > 0) return providerSync
+  const modelSync = typeof getModelContextWindowSync === 'function' ? getModelContextWindowSync(modelId) : null
+  return modelSync ?? undefined
+}
+
+/** Resolve a model's configured max output tokens from provider settings or registry, if any. */
+export function getConfiguredMaxOutput(
+  settings: Pick<Settings, 'providers'>,
+  providerId: string | undefined,
+  modelId: string | undefined
+): number | undefined {
+  if (!providerId || !modelId) return undefined
+  const fromSettings = settings.providers?.[providerId]?.models?.find((model) => model.modelId === modelId)?.maxOutput
+  if (fromSettings && fromSettings > 0) return fromSettings
+  const providerSync = typeof getProviderModelMaxOutputSync === 'function' ? getProviderModelMaxOutputSync(providerId, modelId) : null
+  return providerSync ?? undefined
 }
