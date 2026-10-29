@@ -55,7 +55,6 @@ linux:
   target:
     - deb
     - AppImage
-    - tar.gz
   artifactName: ${productName}-${version}-linux-debug-${arch}.${ext}
 
 deb:
