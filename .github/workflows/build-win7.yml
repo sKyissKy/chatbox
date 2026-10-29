@@ -59,7 +59,7 @@ jobs:
 
       - name: Run Core Tests
         run: |
-          pnpm exec vitest run src/shared/utils/reasoning-control.test.ts src/shared/providers/definitions/models/reasoning-request-options.test.ts src/renderer/components/InputBox/ReasoningControlButton.test.tsx src/main/skills/builtin/index.test.ts
+          pnpm exec vitest run src/shared/utils/reasoning-control.test.ts src/shared/providers/definitions/models/reasoning-request-options.test.ts src/renderer/components/InputBox/ReasoningControlButton.test.tsx src/main/skills/builtin/index.test.ts src/main/debug-logger.test.ts
 
       - name: Build Application (Main, Preload, Renderer)
         run: pnpm run build
@@ -71,10 +71,17 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
         run: pnpm run build:win7-debug
 
+      - name: Get App Version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./release/app/package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Upload Win7 Release Installer (.exe)
         uses: actions/upload-artifact@v4
         with:
-          name: Chatbox-Win7-x64-Release-exe
+          name: Chatbox-${{ steps.app_version.outputs.version }}-Win7-x64-Release-exe
           path: release/*Win7-x64-Setup.exe
           if-no-files-found: error
 
@@ -82,6 +89,6 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
         uses: actions/upload-artifact@v4
         with:
-          name: Chatbox-Win7-x64-Debug-exe
+          name: Chatbox-${{ steps.app_version.outputs.version }}-Win7-x64-Debug-exe
           path: release/*Win7-x64-Debug-Setup.exe
           if-no-files-found: error
