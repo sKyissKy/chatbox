@@ -261,52 +261,105 @@ if (fs.existsSync(pyExe) && !hasPythonPackage('scipy')) {
   }
 }
 
-// 5. Standalone Chromium (Playwright Browser Engine)
+// 5. Standalone Chromium 90 (Snapshot build 869685 matching Win7)
 if (!hasBrowser()) {
-  console.log(`[prepare-linux-runtime] Installing standalone Chromium via playwright-core for linux-${targetArch}...`)
-  try {
-    run(`npx playwright-core install chromium`, {
-      env: {
-        ...process.env,
-        PLAYWRIGHT_BROWSERS_PATH: browserDir,
-      },
-    })
+  if (targetArch === 'x64') {
+    console.log('[prepare-linux-runtime] Downloading Chromium 90 (build 869685) for linux-x64...')
+    const chromeUrl = 'https://npmmirror.com/mirrors/chromium-browser-snapshots/Linux_x64/869685/chrome-linux.zip'
+    const tmpChromeArchive = path.join(targetRuntimeDir, 'chrome-linux.zip')
+    try {
+      run(`curl -fsSL "${chromeUrl}" -o "${tmpChromeArchive}"`)
+      run(`unzip -q -o "${tmpChromeArchive}" -d "${browserDir}"`)
+      fs.rmSync(tmpChromeArchive, { force: true })
 
-    function findChrome(dir) {
-      for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, item.name)
-        if (item.isDirectory()) {
-          const found = findChrome(full)
-          if (found) return found
-        } else if (item.isFile() && item.name === 'chrome') {
-          return full
+      const chromeBin = path.join(browserDir, 'chrome-linux', 'chrome')
+      if (fs.existsSync(chromeBin)) {
+        fs.chmodSync(chromeBin, 0o755)
+        const rootChromeBin = path.join(browserDir, 'chrome')
+        if (!fs.existsSync(rootChromeBin)) {
+          try {
+            fs.symlinkSync(path.join('chrome-linux', 'chrome'), rootChromeBin)
+          } catch {
+            fs.copyFileSync(chromeBin, rootChromeBin)
+            fs.chmodSync(rootChromeBin, 0o755)
+          }
+        }
+        console.log('[prepare-linux-runtime] Chromium 90 extracted and configured successfully.')
+      }
+    } catch (err) {
+      console.error(`[prepare-linux-runtime] Failed to download Chromium 90: ${err.message}`)
+    }
+  } else {
+    // arm64 fallback: use bundled playwright-core cli without npx
+    console.log(`[prepare-linux-runtime] Installing standalone Chromium for linux-${targetArch}...`)
+    const playwrightCli = path.join(nodeDir, 'node_modules', 'playwright-core', 'cli.js')
+    try {
+      if (fs.existsSync(playwrightCli) && fs.existsSync(nodeExe)) {
+        run(`"${nodeExe}" "${playwrightCli}" install chromium`, {
+          env: {
+            ...process.env,
+            PLAYWRIGHT_BROWSERS_PATH: browserDir,
+          },
+        })
+      } else {
+        run(`npx --yes playwright-core install chromium`, {
+          env: {
+            ...process.env,
+            PLAYWRIGHT_BROWSERS_PATH: browserDir,
+          },
+        })
+      }
+
+      function findChrome(dir) {
+        for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, item.name)
+          if (item.isDirectory()) {
+            const found = findChrome(full)
+            if (found) return found
+          } else if (item.isFile() && item.name === 'chrome') {
+            return full
+          }
+        }
+        return null
+      }
+
+      const chromeBin = findChrome(browserDir)
+      if (chromeBin) {
+        console.log(`[prepare-linux-runtime] Found Chromium executable at: ${chromeBin}`)
+        const chromeDir = path.dirname(chromeBin)
+        const targetChromeLink = path.join(browserDir, 'chrome')
+        if (!fs.existsSync(targetChromeLink)) {
+          try {
+            fs.symlinkSync(chromeBin, targetChromeLink)
+          } catch {
+            fs.copyFileSync(chromeBin, targetChromeLink)
+          }
+        }
+        const targetChromeLinuxDir = path.join(browserDir, 'chrome-linux')
+        if (!fs.existsSync(targetChromeLinuxDir) && chromeDir !== browserDir) {
+          try {
+            fs.symlinkSync(chromeDir, targetChromeLinuxDir, 'dir')
+          } catch {}
         }
       }
-      return null
+    } catch (err) {
+      console.warn(`[prepare-linux-runtime] Failed to download Chromium: ${err.message}`)
     }
-
-    const chromeBin = findChrome(browserDir)
-    if (chromeBin) {
-      console.log(`[prepare-linux-runtime] Found Chromium executable at: ${chromeBin}`)
-      const chromeDir = path.dirname(chromeBin)
-      const targetChromeLink = path.join(browserDir, 'chrome')
-      if (!fs.existsSync(targetChromeLink)) {
-        try {
-          fs.symlinkSync(chromeBin, targetChromeLink)
-        } catch {
-          fs.copyFileSync(chromeBin, targetChromeLink)
-        }
-      }
-      const targetChromeLinuxDir = path.join(browserDir, 'chrome-linux')
-      if (!fs.existsSync(targetChromeLinuxDir) && chromeDir !== browserDir) {
-        try {
-          fs.symlinkSync(chromeDir, targetChromeLinuxDir, 'dir')
-        } catch {}
-      }
-    }
-  } catch (err) {
-    console.warn(`[prepare-linux-runtime] Failed to download Chromium via Playwright: ${err.message}`)
   }
+}
+
+// Final runtime integrity verification
+if (!hasBrowser()) {
+  console.error('[prepare-linux-runtime] Fatal: Chromium binary is missing!')
+  process.exit(1)
+}
+if (!hasPythonPackage('scipy')) {
+  console.error('[prepare-linux-runtime] Fatal: Python packages (scipy) are missing!')
+  process.exit(1)
+}
+if (!fs.existsSync(wsPkg)) {
+  console.error('[prepare-linux-runtime] Fatal: Node packages (ws) are missing!')
+  process.exit(1)
 }
 
 console.log('[prepare-linux-runtime] Offline workstation runtime assets setup completed successfully!')
