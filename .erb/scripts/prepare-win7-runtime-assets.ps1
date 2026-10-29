@@ -91,7 +91,7 @@ if (-not (Test-Path $scipyPkg)) {
     # Install pip and comprehensive data analysis, science, office, ML and multimedia packages
     $pipPy = Join-Path $downloadsDir "get-pip.py"
     if (-not (Test-Path $pipPy)) {
-        Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $pipPy -UseBasicParsing
+        Invoke-WebRequest -Uri "https://bootstrap.pypa.io/pip/3.8/get-pip.py" -OutFile $pipPy -UseBasicParsing
     }
     & $pyExe $pipPy --no-warn-script-location
     if ($LASTEXITCODE -ne 0) {
