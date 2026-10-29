@@ -71,7 +71,7 @@ jobs:
 
       - name: Run Core Tests
         run: |
-          pnpm exec vitest run src/shared/utils/reasoning-control.test.ts src/shared/providers/definitions/models/reasoning-request-options.test.ts src/renderer/components/InputBox/ReasoningControlButton.test.tsx src/main/skills/builtin/index.test.ts src/main/runtime-env.test.ts
+          pnpm exec vitest run src/shared/utils/reasoning-control.test.ts src/shared/providers/definitions/models/reasoning-request-options.test.ts src/renderer/components/InputBox/ReasoningControlButton.test.tsx src/main/skills/builtin/index.test.ts src/main/runtime-env.test.ts src/main/debug-logger.test.ts
 
       - name: Build Application (Main, Preload, Renderer)
         run: pnpm run build

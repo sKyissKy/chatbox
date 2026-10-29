@@ -1,3 +1,3 @@
-This flag file enables debug logging for Chatbox on Windows 7.
-When this file is present in the application installation directory or resources directory,
-all application logs, errors, and unhandled exceptions will be written to debug.log in the installation directory.
+This flag file enables verbose diagnostic debug logging for Chatbox.
+When this file is present in the application directory, current working directory, or resources directory,
+all application logs, errors, and unhandled exceptions will be written to debug.log.
