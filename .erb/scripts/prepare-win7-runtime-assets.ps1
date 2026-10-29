@@ -3,6 +3,7 @@
     Prepares the offline workstation runtime assets for Chatbox Windows 7 packaging.
 .DESCRIPTION
     Ensures that ../runtime-assets/ contains python, node, browser, git, and bin.
+    Performs full-spectrum incremental validation for all 24 Python packages and 10 Node packages.
     Can be used locally or in CI (e.g. GitHub Actions).
 #>
 
@@ -22,15 +23,95 @@ $nodeExe = Join-Path $targetRuntimeDir "node\node.exe"
 $gitExe = Join-Path $targetRuntimeDir "git\cmd\git.exe"
 $browserExe = Join-Path $targetRuntimeDir "browser\chrome.exe"
 $binExe = Join-Path $targetRuntimeDir "bin\ffmpeg.exe"
-$scipyPkg = Join-Path $targetRuntimeDir "python\Lib\site-packages\scipy"
-$wsPkg = Join-Path $targetRuntimeDir "node\node_modules\ws"
 
-if ((Test-Path $pyExe) -and (Test-Path $nodeExe) -and (Test-Path $gitExe) -and (Test-Path $browserExe) -and (Test-Path $binExe) -and (Test-Path $scipyPkg) -and (Test-Path $wsPkg)) {
-    Write-Host "[prepare-runtime-assets] All required runtime assets are already present at $targetRuntimeDir" -ForegroundColor Green
+$pyExpectedPackages = @(
+    'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn', 'scikit-learn',
+    'statsmodels', 'openpyxl', 'xlsxwriter', 'python-docx', 'python-pptx',
+    'pypdf', 'pdfplumber', 'reportlab', 'pillow', 'qrcode', 'imageio',
+    'pefile', 'pycryptodome', 'requests', 'beautifulsoup4', 'lxml', 'pyyaml', 'tqdm'
+)
+
+$nodeExpectedPackages = @(
+    'playwright-core', 'xlsx', 'tsx', 'cheerio', 'axios',
+    'pdf-parse', 'adm-zip', 'glob', 'ws', 'chrome-remote-interface'
+)
+
+$nodePinMap = @{
+    'playwright-core' = 'playwright-core@1.35.1'
+    'xlsx' = 'xlsx@0.18.5'
+    'tsx' = 'tsx@3.14.0'
+    'cheerio' = 'cheerio@1.0.0-rc.12'
+    'axios' = 'axios@1.6.8'
+    'pdf-parse' = 'pdf-parse@1.1.1'
+    'adm-zip' = 'adm-zip@0.5.10'
+    'glob' = 'glob@10.4.5'
+    'ws' = 'ws@8.14.2'
+    'chrome-remote-interface' = 'chrome-remote-interface@0.32.1'
+}
+
+function Get-MissingPythonPackages {
+    param([string]$PyExePath)
+    if (-not (Test-Path $PyExePath)) {
+        return @($pyExpectedPackages)
+    }
+    $pyCheck = @"
+import importlib.util
+mods = {
+    'numpy': 'numpy', 'scipy': 'scipy', 'pandas': 'pandas', 'matplotlib': 'matplotlib',
+    'seaborn': 'seaborn', 'scikit-learn': 'sklearn', 'statsmodels': 'statsmodels',
+    'openpyxl': 'openpyxl', 'xlsxwriter': 'xlsxwriter', 'python-docx': 'docx',
+    'python-pptx': 'pptx', 'pypdf': 'pypdf', 'pdfplumber': 'pdfplumber',
+    'reportlab': 'reportlab', 'pillow': 'PIL', 'qrcode': 'qrcode', 'imageio': 'imageio',
+    'pefile': 'pefile', 'pycryptodome': 'Crypto', 'requests': 'requests',
+    'beautifulsoup4': 'bs4', 'lxml': 'lxml', 'pyyaml': 'yaml', 'tqdm': 'tqdm'
+}
+missing = [pkg for pkg, mod in mods.items() if not importlib.util.find_spec(mod)]
+print(' '.join(missing))
+"@
+    try {
+        $result = $pyCheck | & $PyExePath -
+        if ($result) {
+            $trimmed = $result.Trim()
+            if ($trimmed) {
+                return @($trimmed.Split(' ') | Where-Object { $_ })
+            }
+        }
+        return @()
+    } catch {
+        return @($pyExpectedPackages)
+    }
+}
+
+function Get-MissingNodePackages {
+    param([string]$NodeDirPath)
+    $nmDir = Join-Path $NodeDirPath "node_modules"
+    if (-not (Test-Path $nmDir)) {
+        return @($nodeExpectedPackages)
+    }
+    $missing = @()
+    foreach ($pkg in $nodeExpectedPackages) {
+        if (-not (Test-Path (Join-Path $nmDir $pkg))) {
+            $missing += $pkg
+        }
+    }
+    return $missing
+}
+
+$initialMissingPy = Get-MissingPythonPackages $pyExe
+$initialMissingNode = Get-MissingNodePackages (Join-Path $targetRuntimeDir "node")
+
+if ((Test-Path $pyExe) -and (Test-Path $nodeExe) -and (Test-Path $gitExe) -and (Test-Path $browserExe) -and (Test-Path $binExe) -and ($initialMissingPy.Count -eq 0) -and ($initialMissingNode.Count -eq 0)) {
+    Write-Host "[prepare-runtime-assets] All required runtime assets (24 Python packages, 10 Node packages, Chromium 90, MinGit, and FFmpeg) are verified present." -ForegroundColor Green
     exit 0
 }
 
-Write-Host "[prepare-runtime-assets] Preparing runtime assets in: $targetRuntimeDir" -ForegroundColor Cyan
+Write-Host "[prepare-runtime-assets] Preparing/Updating runtime assets in: $targetRuntimeDir" -ForegroundColor Cyan
+if ($initialMissingPy.Count -gt 0) {
+    Write-Host "[prepare-runtime-assets] Missing Python packages detected: $($initialMissingPy -join ', ')" -ForegroundColor Yellow
+}
+if ($initialMissingNode.Count -gt 0) {
+    Write-Host "[prepare-runtime-assets] Missing Node packages detected: $($initialMissingNode -join ', ')" -ForegroundColor Yellow
+}
 
 # Check if a custom zip URL is provided
 if ($env:RUNTIME_ASSETS_ZIP_URL) {
@@ -72,7 +153,6 @@ function Download-And-Extract {
 
 # 1. Python 3.8.10 Embed
 $pyDir = Join-Path $targetRuntimeDir "python"
-$scipyPkg = Join-Path $pyDir "Lib\site-packages\scipy"
 if (-not (Test-Path $pyExe)) {
     Download-And-Extract -Url "https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip" -ZipName "python-3.8.10-embed-amd64.zip" -DestDir $pyDir
     
@@ -87,22 +167,25 @@ if (-not (Test-Path $pyExe)) {
     }
 }
 
-if (-not (Test-Path $scipyPkg)) {
-    # Install pip and comprehensive data analysis, science, office, ML and multimedia packages
-    $pipPy = Join-Path $downloadsDir "get-pip.py"
-    if (-not (Test-Path $pipPy)) {
-        Invoke-WebRequest -Uri "https://bootstrap.pypa.io/pip/3.8/get-pip.py" -OutFile $pipPy -UseBasicParsing
-    }
-    & $pyExe $pipPy --no-warn-script-location
-    if ($LASTEXITCODE -ne 0) {
-        throw "[prepare-runtime-assets] Failed to execute get-pip.py!"
-    }
+$missingPy = Get-MissingPythonPackages $pyExe
+if ($missingPy.Count -gt 0) {
+    # Ensure pip is installed
     $pipExe = Join-Path $pyDir "Scripts\pip.exe"
+    if (-not (Test-Path $pipExe)) {
+        $pipPy = Join-Path $downloadsDir "get-pip.py"
+        if (-not (Test-Path $pipPy)) {
+            Invoke-WebRequest -Uri "https://bootstrap.pypa.io/pip/3.8/get-pip.py" -OutFile $pipPy -UseBasicParsing
+        }
+        & $pyExe $pipPy --no-warn-script-location
+        if ($LASTEXITCODE -ne 0) {
+            throw "[prepare-runtime-assets] Failed to execute get-pip.py!"
+        }
+    }
     if (-not (Test-Path $pipExe)) {
         throw "[prepare-runtime-assets] pip.exe not found at $pipExe after get-pip.py!"
     }
-    Write-Host "[prepare-runtime-assets] Installing full Python suite (24 packages: numpy, scipy, pandas, matplotlib, seaborn, scikit-learn, statsmodels, openpyxl, xlsxwriter, python-docx, python-pptx, pypdf, pdfplumber, reportlab, pillow, qrcode, imageio, pefile, pycryptodome, requests, beautifulsoup4, lxml, pyyaml, tqdm)..." -ForegroundColor Cyan
-    & $pipExe install numpy scipy pandas matplotlib seaborn scikit-learn statsmodels openpyxl xlsxwriter python-docx python-pptx pypdf pdfplumber reportlab pillow qrcode imageio pefile pycryptodome requests beautifulsoup4 lxml pyyaml tqdm --no-warn-script-location
+    Write-Host "[prepare-runtime-assets] Installing missing Python packages ($($missingPy -join ', '))..." -ForegroundColor Cyan
+    & $pipExe install $missingPy --no-warn-script-location
     if ($LASTEXITCODE -ne 0) {
         throw "[prepare-runtime-assets] pip install packages failed!"
     }
@@ -110,16 +193,17 @@ if (-not (Test-Path $scipyPkg)) {
 
 # 2. Node.js 16.20.2 + full offline Node.js toolchain (pinned for Node 16 / Win7 compatibility)
 $nodeDir = Join-Path $targetRuntimeDir "node"
-$wsPkg = Join-Path $nodeDir "node_modules\ws"
 if (-not (Test-Path $nodeExe)) {
     Download-And-Extract -Url "https://nodejs.org/dist/v16.20.2/node-v16.20.2-win-x64.zip" -ZipName "node-v16.20.2-win-x64.zip" -DestDir $nodeDir -SubFolderToExtract "node-v16.20.2-win-x64"
 }
 
-if (-not (Test-Path $wsPkg)) {
+$missingNode = Get-MissingNodePackages $nodeDir
+if ($missingNode.Count -gt 0) {
     $npmCmd = Join-Path $nodeDir "npm.cmd"
     if (Test-Path $npmCmd) {
-        Write-Host "[prepare-runtime-assets] Installing full offline Node.js toolchain for Node 16 (playwright-core@1.35.1, xlsx@0.18.5, tsx@3.14.0, cheerio@1.0.0-rc.12, axios@1.6.8, pdf-parse@1.1.1, adm-zip@0.5.10, glob@10.4.5, ws@8.14.2, chrome-remote-interface@0.32.1)..." -ForegroundColor Cyan
-        & $npmCmd install playwright-core@1.35.1 xlsx@0.18.5 tsx@3.14.0 cheerio@1.0.0-rc.12 axios@1.6.8 pdf-parse@1.1.1 adm-zip@0.5.10 glob@10.4.5 ws@8.14.2 chrome-remote-interface@0.32.1 --prefix $nodeDir --no-audit --no-fund
+        $installTargets = @($missingNode | ForEach-Object { if ($nodePinMap.ContainsKey($_)) { $nodePinMap[$_] } else { $_ } })
+        Write-Host "[prepare-runtime-assets] Installing missing Node.js packages ($($installTargets -join ', '))..." -ForegroundColor Cyan
+        & $npmCmd install $installTargets --prefix $nodeDir --no-audit --no-fund
         if ($LASTEXITCODE -ne 0) {
             throw "[prepare-runtime-assets] npm install packages failed!"
         }
@@ -155,17 +239,20 @@ if (-not (Test-Path $binExe)) {
 Remove-Item -Path $downloadsDir -Recurse -Force -ErrorAction SilentlyContinue
 
 # Final verification
+$finalMissingPy = Get-MissingPythonPackages $pyExe
+$finalMissingNode = Get-MissingNodePackages $nodeDir
+
 $missing = @()
 if (-not (Test-Path $pyExe)) { $missing += "python.exe" }
-if (-not (Test-Path $scipyPkg)) { $missing += "scipy in python site-packages" }
+if ($finalMissingPy.Count -gt 0) { $missing += "Python packages: $($finalMissingPy -join ', ')" }
 if (-not (Test-Path $nodeExe)) { $missing += "node.exe" }
-if (-not (Test-Path $wsPkg)) { $missing += "ws in node_modules" }
+if ($finalMissingNode.Count -gt 0) { $missing += "Node packages: $($finalMissingNode -join ', ')" }
 if (-not (Test-Path $browserExe)) { $missing += "chrome.exe" }
 if (-not (Test-Path $gitExe)) { $missing += "git.exe" }
 if (-not (Test-Path $binExe)) { $missing += "ffmpeg.exe" }
 
 if ($missing.Count -gt 0) {
-    throw "[prepare-runtime-assets] Fatal: The following required components were not installed properly: $($missing -join ', ')"
+    throw "[prepare-runtime-assets] Fatal: The following required components were not installed properly: $($missing -join '; ')"
 }
 
-Write-Host "[prepare-runtime-assets] Win7 runtime assets setup completed successfully!" -ForegroundColor Green
+Write-Host "[prepare-runtime-assets] All 24 Python packages, 10 Node packages, and binaries verified successfully!" -ForegroundColor Green
