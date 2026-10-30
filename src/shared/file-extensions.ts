@@ -213,6 +213,14 @@ export function getFileAcceptString(): string {
 }
 
 /**
+ * Get all supported file extensions without leading dots
+ * Used for native file dialog filters
+ */
+export function getSupportedFileExtensions(): string[] {
+  return [...allSupportedExts, '.numbers'].map((ext) => ext.replace(/^\./, ''))
+}
+
+/**
  * Get the file upload accept configuration object
  * Used for react-dropzone accept configuration
  */

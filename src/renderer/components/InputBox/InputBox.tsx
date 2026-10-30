@@ -9,6 +9,7 @@ import { TestId } from '@shared/automation/testids'
 import {
   getFileAcceptConfig,
   getFileAcceptString,
+  getSupportedFileExtensions,
   getUnsupportedFileType,
   isSupportedFile,
 } from '@shared/file-extensions'
@@ -1381,10 +1382,47 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       dom.focusMessageInput()
     }
 
-    const onImageUploadClick = () => {
+    const onImageUploadClick = async () => {
+      if (platform.isDesktopLike && platform.openFileDialog) {
+        try {
+          const result = await platform.openFileDialog({
+            title: t('Attach Image'),
+            multiple: true,
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] }],
+          })
+          if (!result.canceled && result.files.length > 0) {
+            await insertFiles(result.files)
+            dom.focusMessageInput()
+            return
+          }
+          if (result.canceled) return
+        } catch (error) {
+          log.error('Failed to open native image dialog, falling back to input:', error)
+        }
+      }
       pictureInputRef.current?.click()
     }
-    const onFileUploadClick = () => {
+
+    const onFileUploadClick = async () => {
+      if (platform.isDesktopLike && platform.openFileDialog) {
+        try {
+          const result = await platform.openFileDialog({
+            title: t('Select File'),
+            multiple: true,
+            filters: isAgentModeActive
+              ? undefined
+              : [{ name: 'Supported Files', extensions: getSupportedFileExtensions() }],
+          })
+          if (!result.canceled && result.files.length > 0) {
+            await insertFiles(result.files)
+            dom.focusMessageInput()
+            return
+          }
+          if (result.canceled) return
+        } catch (error) {
+          log.error('Failed to open native file dialog, falling back to input:', error)
+        }
+      }
       fileInputRef.current?.click()
     }
 

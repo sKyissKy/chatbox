@@ -25,7 +25,7 @@ export interface SandboxRuntimeConfig {
     denyWrite?: string[]
   }
 }
-import { augmentRuntimeEnvironment } from '../runtime-env'
+
 import { sandboxAttachmentRelPath } from '../../shared/sandbox/attachment-path'
 import {
   SANDBOX_EXEC_ERROR_CODES,
@@ -56,6 +56,7 @@ import { buildOperationFinishLog, buildOperationStartLog, createOperationId } fr
 import { killProcessTree } from '../process-tree'
 import { getChatboxQaPaths } from '../qa-runtime'
 import { runRipgrepFileList, runRipgrepSearch } from '../ripgrep-search'
+import { augmentRuntimeEnvironment } from '../runtime-env'
 import { getLogger } from '../util'
 import { resolveWindowsPowerShell } from '../windows-powershell'
 import { pathContainsAttachmentSeedManifest } from './attachment-seed'
@@ -451,22 +452,8 @@ function getSandboxRuntimeImportTarget(): string {
   }
 
   const candidateEntries = [
-    path.join(
-      process.resourcesPath,
-      'app.asar.unpacked',
-      'node_modules',
-      'sandbox-runtime',
-      'dist',
-      'index.js'
-    ),
-    path.join(
-      process.resourcesPath,
-      'app.asar',
-      'node_modules',
-      'sandbox-runtime',
-      'dist',
-      'index.js'
-    ),
+    path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sandbox-runtime', 'dist', 'index.js'),
+    path.join(process.resourcesPath, 'app.asar', 'node_modules', 'sandbox-runtime', 'dist', 'index.js'),
   ]
 
   for (const candidate of candidateEntries) {
@@ -2183,7 +2170,7 @@ export async function exportFileFromSandbox(
   suggestedName?: string
 ): Promise<{ success: boolean; localPath?: string; error?: string }> {
   try {
-    const { dialog } = await import('electron')
+    const { BrowserWindow, dialog } = await import('electron')
 
     // Resolve path relative to a sandbox session's working directory.
     // Security: only files inside a known sandbox root are allowed.
@@ -2221,10 +2208,14 @@ export async function exportFileFromSandbox(
     }
 
     const defaultPath = suggestedName || path.basename(resolvedPath)
-    const result = await dialog.showSaveDialog({
+    const targetWin = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+    const dialogOptions = {
       defaultPath,
       title: 'Save File',
-    })
+    }
+    const result = targetWin
+      ? await dialog.showSaveDialog(targetWin, dialogOptions)
+      : await dialog.showSaveDialog(dialogOptions)
 
     if (result.canceled || !result.filePath) {
       return { success: false, error: 'Save dialog cancelled' }

@@ -669,8 +669,30 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
   }, [knowledgeBase?.id, showUploadArea])
 
   // Handle file selection via file dialog
-  const handleFileDialog = useCallback(() => {
+  const handleFileDialog = useCallback(async () => {
     if (!knowledgeBase?.id) return
+
+    if (platform.isDesktopLike && platform.openFileDialog) {
+      try {
+        const { accept } = getSupportedFileTypes()
+        const exts = accept
+          .split(',')
+          .map((s) => s.trim().replace(/^\./, ''))
+          .filter(Boolean)
+        const result = await platform.openFileDialog({
+          title: t('Upload Files'),
+          multiple: true,
+          filters: exts.length > 0 ? [{ name: 'Supported Documents', extensions: exts }] : undefined,
+        })
+        if (!result.canceled && result.files.length > 0) {
+          await uploadFiles(result.files)
+          return
+        }
+        if (result.canceled) return
+      } catch (error) {
+        console.error('Failed to open native file dialog for KB, falling back to input:', error)
+      }
+    }
 
     try {
       const input = document.createElement('input')
@@ -686,10 +708,8 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         await uploadFiles(files)
       }
 
-      // Add a small delay for better Windows compatibility
-      setTimeout(() => {
-        input.click()
-      }, 10)
+      // Synchronous click to maintain user activation on Web
+      input.click()
     } catch (error) {
       console.error('Failed to upload file:', error)
       toastError(

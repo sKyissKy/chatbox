@@ -317,7 +317,7 @@ function ImageCreatorPage() {
     setSelectedRatio((prev) => (newRatioOptions.includes(prev) ? prev : 'auto'))
   }, [])
 
-  const handleImageUpload = useCallback((files: FileList | null) => {
+  const handleImageUpload = useCallback((files: FileList | File[] | null) => {
     if (!files || files.length === 0) return
 
     let available = MAX_REFERENCE_IMAGES - referenceImagesRef.current.length
@@ -352,6 +352,26 @@ function ImageCreatorPage() {
       reader.readAsDataURL(file)
     }
   }, [])
+
+  const handleOpenImagePicker = useCallback(async () => {
+    if (platform.isDesktopLike && platform.openFileDialog) {
+      try {
+        const result = await platform.openFileDialog({
+          title: t('Upload Reference Images'),
+          multiple: true,
+          filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+        })
+        if (!result.canceled && result.files.length > 0) {
+          handleImageUpload(result.files)
+          return
+        }
+        if (result.canceled) return
+      } catch (error) {
+        log.error('Failed to open native image dialog:', error)
+      }
+    }
+    fileInputRef.current?.click()
+  }, [handleImageUpload, t])
 
   const handleRemoveReferenceImage = useCallback((storageKey: string) => {
     const current = referenceImagesRef.current.find((img) => img.storageKey === storageKey)
@@ -591,7 +611,7 @@ function ImageCreatorPage() {
               <ReferenceImagesPreview
                 images={referenceImages}
                 onRemove={handleRemoveReferenceImage}
-                onAddClick={() => fileInputRef.current?.click()}
+                onAddClick={handleOpenImagePicker}
               />
 
               <input
@@ -670,7 +690,7 @@ function ImageCreatorPage() {
                     onRatioDrawerOpen={() => setShowRatioDrawer(true)}
                     onRatioSelect={setSelectedRatio}
                     onModelSelect={handleModelSelect}
-                    onAddReference={() => fileInputRef.current?.click()}
+                    onAddReference={handleOpenImagePicker}
                     onNewCreation={handleNewCreation}
                   />
                 </Stack>

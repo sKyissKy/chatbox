@@ -190,12 +190,8 @@ function ExportAndImport(props: { onCancel: () => void }) {
     const dateStr = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
     platform.exporter.exportTextFile(`chatbox-exported-data-${dateStr}.json`, JSON.stringify(data))
   }
-  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processImportFile = (file: File) => {
     const errTip = t('Import failed, unsupported data format')
-    const file = e.target.files?.[0]
-    if (!file) {
-      return
-    }
     const reader = new FileReader()
     reader.onload = (event) => {
       ;(async () => {
@@ -254,6 +250,37 @@ function ExportAndImport(props: { onCancel: () => void }) {
     }
     reader.readAsText(file)
   }
+
+  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) {
+      return
+    }
+    processImportFile(file)
+  }
+
+  const onImportButtonClick = async () => {
+    if (platform.isDesktopLike && platform.openFileDialog) {
+      try {
+        const result = await platform.openFileDialog({
+          title: t('Import and Restore'),
+          multiple: false,
+          filters: [
+            { name: 'JSON Files', extensions: ['json'] },
+            { name: 'All Files', extensions: ['*'] },
+          ],
+        })
+        if (!result.canceled && result.files.length > 0) {
+          processImportFile(result.files[0])
+          return
+        }
+        if (result.canceled) return
+      } catch (err) {
+        console.error('Failed to open native file dialog for import:', err)
+      }
+    }
+    importInputRef.current?.click()
+  }
   return (
     <Box
       sx={{
@@ -310,7 +337,7 @@ function ExportAndImport(props: { onCancel: () => void }) {
           </Box>
           {importTips && <Box className="p-1 text-red-600">{importTips}</Box>}
           <input style={{ display: 'none' }} type="file" ref={importInputRef} onChange={onImport} />
-          <Button variant="contained" color="primary" onClick={() => importInputRef.current?.click()}>
+          <Button variant="contained" color="primary" onClick={onImportButtonClick}>
             {t('Import and Restore')}
           </Button>
         </Box>

@@ -537,6 +537,35 @@ export default class DesktopPlatform implements Platform {
     return this.ipc.invoke('dialog:openDirectory')
   }
 
+  public async openFileDialog(options?: {
+    title?: string
+    filters?: Array<{ name: string; extensions: string[] }>
+    multiple?: boolean
+  }): Promise<{ canceled: boolean; files: File[] }> {
+    const result = await this.ipc.invoke('dialog:openFiles', options)
+    if (result.canceled || !result.files?.length) {
+      return { canceled: true, files: [] }
+    }
+    const files = result.files.map(
+      (item: {
+        path: string
+        name: string
+        type: string
+        size: number
+        lastModified: number
+        data: ArrayBuffer | Uint8Array
+      }) => {
+        const file = new File([item.data], item.name, {
+          type: item.type,
+          lastModified: item.lastModified,
+        })
+        rememberFileNativePath(file, item.path)
+        return file
+      }
+    )
+    return { canceled: false, files }
+  }
+
   public async scanLocalAgentMemories() {
     return this.ipc.invoke('agent-persona:scan-local-memories')
   }

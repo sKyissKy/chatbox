@@ -255,6 +255,12 @@ export interface Platform extends Storage {
 
   // Directory dialog (Desktop only)
   openDirectoryDialog?(): Promise<{ canceled: boolean; path?: string }>
+  // File dialog (Desktop only)
+  openFileDialog?(options?: {
+    title?: string
+    filters?: Array<{ name: string; extensions: string[] }>
+    multiple?: boolean
+  }): Promise<{ canceled: boolean; files: File[] }>
   /** Scan local Claude/Codex memory files for import candidates (desktop only). */
   scanLocalAgentMemories?(): Promise<LocalMemoryScanResult>
 

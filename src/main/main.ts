@@ -2,6 +2,9 @@
 // references at top level. Must run before any module that loads pdfjs, so keep
 // this as the very first import. See pdfjs-globals.ts for details.
 import './pdfjs-globals'
+import { initDebugLogger } from './debug-logger'
+
+initDebugLogger()
 
 // Validate QA profile and task isolation before any Electron module can touch userData.
 import { CHATBOX_QA_PREFLIGHT } from './qa-preflight'
@@ -1153,16 +1156,129 @@ ipcMain.handle('switch-theme', (event, theme: 'dark' | 'light') => {
   })
 })
 
+function inferMimeTypeFromExt(ext: string): string {
+  switch (ext) {
+    case '.png':
+      return 'image/png'
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg'
+    case '.gif':
+      return 'image/gif'
+    case '.webp':
+      return 'image/webp'
+    case '.bmp':
+      return 'image/bmp'
+    case '.svg':
+      return 'image/svg+xml'
+    case '.pdf':
+      return 'application/pdf'
+    case '.txt':
+    case '.log':
+    case '.ini':
+    case '.conf':
+    case '.env':
+      return 'text/plain'
+    case '.md':
+    case '.mdx':
+      return 'text/markdown'
+    case '.csv':
+      return 'text/csv'
+    case '.json':
+      return 'application/json'
+    case '.doc':
+      return 'application/msword'
+    case '.docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    case '.xls':
+      return 'application/vnd.ms-excel'
+    case '.xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    case '.ppt':
+      return 'application/vnd.ms-powerpoint'
+    case '.pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    case '.epub':
+      return 'application/epub+zip'
+    case '.html':
+    case '.htm':
+      return 'text/html'
+    case '.xml':
+      return 'text/xml'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
 ipcMain.handle('dialog:openDirectory', async () => {
-  const result = await dialog.showOpenDialog({
+  const targetWin = mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getFocusedWindow()
+  const options: Electron.OpenDialogOptions = {
     properties: ['openDirectory', 'createDirectory'],
     title: 'Select Working Directory',
-  })
+  }
+  const result = targetWin ? await dialog.showOpenDialog(targetWin, options) : await dialog.showOpenDialog(options)
   if (result.canceled || result.filePaths.length === 0) {
     return { canceled: true }
   }
   return { canceled: false, path: result.filePaths[0] }
 })
+
+ipcMain.handle(
+  'dialog:openFiles',
+  async (
+    _event,
+    options?: {
+      title?: string
+      filters?: Electron.FileFilter[]
+      multiple?: boolean
+    }
+  ) => {
+    const targetWin = mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getFocusedWindow()
+    const properties: Array<'openFile' | 'multiSelections'> = ['openFile']
+    if (options?.multiple !== false) {
+      properties.push('multiSelections')
+    }
+    const dialogOptions: Electron.OpenDialogOptions = {
+      title: options?.title || 'Select File',
+      properties,
+      filters: options?.filters,
+    }
+    const result = targetWin
+      ? await dialog.showOpenDialog(targetWin, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, files: [] }
+    }
+
+    const files = await Promise.all(
+      result.filePaths.map(async (filePath) => {
+        try {
+          const stat = await fs.promises.stat(filePath)
+          const name = path.basename(filePath)
+          const ext = path.extname(filePath).toLowerCase()
+          const mimeType = inferMimeTypeFromExt(ext)
+          const data = await fs.promises.readFile(filePath)
+          return {
+            path: filePath,
+            name,
+            type: mimeType,
+            size: stat.size,
+            lastModified: Math.floor(stat.mtimeMs),
+            data: bufferToArrayBuffer(data),
+          }
+        } catch (err) {
+          log.error(`[Dialog] Failed to read selected file "${filePath}":`, err)
+          return null
+        }
+      })
+    )
+
+    return {
+      canceled: false,
+      files: files.filter(Boolean),
+    }
+  }
+)
 
 ipcMain.handle('window:minimize', () => {
   mainWindow?.minimize()

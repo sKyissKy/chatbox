@@ -83,17 +83,24 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
         run: pnpm run build:linux-debug:${{ matrix.arch }}
 
+      - name: Get App Version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./release/app/package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Upload Debian Package (.deb) (${{ matrix.arch }})
         uses: actions/upload-artifact@v4
         with:
-          name: Chatbox-Linux-${{ matrix.arch }}-deb
+          name: Chatbox-${{ steps.app_version.outputs.version }}-Linux-${{ matrix.arch }}-deb
           path: release/*linux-${{ matrix.deb_arch }}.deb
           if-no-files-found: error
 
       - name: Upload AppImage Package (.AppImage) (${{ matrix.arch }})
         uses: actions/upload-artifact@v4
         with:
-          name: Chatbox-Linux-${{ matrix.arch }}-AppImage
+          name: Chatbox-${{ steps.app_version.outputs.version }}-Linux-${{ matrix.arch }}-AppImage
           path: release/*linux-${{ matrix.appimage_arch }}.AppImage
           if-no-files-found: error
 
@@ -101,7 +108,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
         uses: actions/upload-artifact@v4
         with:
-          name: Chatbox-Linux-${{ matrix.arch }}-Debug-deb
+          name: Chatbox-${{ steps.app_version.outputs.version }}-Linux-${{ matrix.arch }}-Debug-deb
           path: release/*linux-debug-${{ matrix.deb_arch }}.deb
           if-no-files-found: error
 
@@ -109,6 +116,6 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.build_debug == true
         uses: actions/upload-artifact@v4
         with:
-          name: Chatbox-Linux-${{ matrix.arch }}-Debug-AppImage
+          name: Chatbox-${{ steps.app_version.outputs.version }}-Linux-${{ matrix.arch }}-Debug-AppImage
           path: release/*linux-debug-${{ matrix.appimage_arch }}.AppImage
           if-no-files-found: error
